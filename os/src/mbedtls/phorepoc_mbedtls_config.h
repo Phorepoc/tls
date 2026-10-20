@@ -69,6 +69,7 @@
 #define MBEDTLS_RSA_C
 #define MBEDTLS_PKCS1_V15
 #define MBEDTLS_PKCS1_V21
+#define MBEDTLS_X509_RSASSA_PSS_SUPPORT        /* rsa_pss_rsae_* in signature_algorithms: TLS 1.3 servers with RSA certificates (GitHub) need them */
 #define MBEDTLS_ECP_C
 #define MBEDTLS_ECP_NIST_OPTIM
 #define MBEDTLS_ECDH_C

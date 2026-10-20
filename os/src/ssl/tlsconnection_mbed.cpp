@@ -90,7 +90,7 @@ static void TlsFileLog(const char* aFmt, ...)
 	}
 #define TLSLOG(...) TlsFileLog(__VA_ARGS__)
 #elif defined(PHOREPOC_SSL_TRACE)
-#define TLSLOG(...) RDebug::Printf(__VA_ARGS__)
+#define TLSLOG(aFmt, ...) RDebug::Printf("PH: " aFmt, ##__VA_ARGS__)   // "PH:" = what the kernel forwards to the debug link
 #else
 #define TLSLOG(...)
 #endif
@@ -458,6 +458,8 @@ TInt CTlsConnection::MapErr(int aRc)
 	case MBEDTLS_ERR_SSL_ALLOC_FAILED:
 		return KErrNoMemory;
 	default:
+		// an mbedTLS error with no TLS-alert counterpart: always logged (rare), it is the only clue a caller gets
+		RDebug::Printf("PH: [ssl] mbedTLS error -0x%04x -> KErrSSLAlertInternalError", (TUint)-aRc);
 		return KErrSSLAlertInternalError;
 		}
 	}
