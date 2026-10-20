@@ -1,0 +1,28 @@
+# Quick checks on every push and pull request: Python compiles, shell scripts parse, and every source file of ours
+# says its licence (an SPDX line, or the original author's notice for files adapted from elsewhere). The full build
+# runs elsewhere (it needs the Symbian source and the toolchain images).
+name: lint
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python compiles
+        run: |
+          files=$(git ls-files '*.py')
+          [ -z "$files" ] || python3 -m py_compile $files
+      - name: Shell scripts parse
+        run: |
+          rc=0
+          for f in $(git ls-files '*.sh'); do bash -n "$f" || rc=1; done
+          exit $rc
+      - name: Every source file states its licence
+        run: |
+          missing=$(git ls-files '*.c' '*.cpp' '*.h' '*.hrh' '*.inl' '*.py' '*.sh' '*.mmp' '*.go' '*.S' '*.s' \
+                    | while read -r f; do head -c 4000 "$f" | grep -q -i -E 'SPDX-License-Identifier|copyright' || echo "$f"; done)
+          if [ -n "$missing" ]; then echo "no licence line:"; echo "$missing"; exit 1; fi
