@@ -1,0 +1,19 @@
+// Copyright The Phorepoc Authors
+// SPDX-License-Identifier: Apache-2.0
+
+// sslprobe.exe -- which SSL.DLL the phone's loader picks (sslprobe.cpp)
+#include <platform_paths.hrh>
+
+TARGET			sslprobe.exe
+TARGETTYPE		exe
+UID				0x100039ce 0xE5510001
+VENDORID		0
+
+OS_LAYER_SYSTEMINCLUDE_SYMBIAN
+
+SOURCEPATH		.
+SOURCE			sslprobe.cpp
+
+LIBRARY			euser.lib efsrv.lib
+
+SMPSAFE

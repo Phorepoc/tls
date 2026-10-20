@@ -1,0 +1,21 @@
+tls: Phorepoc's TLS for Symbian
+Copyright The Phorepoc Authors (see AUTHORS)
+
+Phorepoc was founded by Kyriakos Bompotis.
+
+Licensed under the Apache License 2.0 (LICENSE).
+
+Not part of this repository, fetched at build time (recipes/fetch_mbedtls.sh, recipes/fetch_cacert.sh):
+
+- mbedTLS 3.6 (https://github.com/Mbed-TLS/mbedtls), copyright The Mbed TLS Contributors. Dual-licensed
+  Apache-2.0 OR GPL-2.0-or-later; Phorepoc uses it under the Apache-2.0 option. The release is pinned by SHA-256 in
+  mbedtls.lock.
+- Mozilla's CA certificate bundle, as extracted and published by curl (https://curl.se/docs/caextract.html),
+  licensed MPL-2.0 (https://www.mozilla.org/MPL/2.0/). Pinned by SHA-256 in cacert.lock; it is data, shipped with
+  the OS image, not linked into any code.
+
+Interface headers of Symbian OS and of Open C (the OpenSSL 0.9.8g API that libssl.dll presents) are compiled
+against but not copied here; their authors' licences apply to them.
+
+Thanks to the mbedTLS project for the engine, to the curl project for keeping the CA bundle current, and to the
+Symbian Foundation for releasing the platform.

@@ -1,0 +1,39 @@
+// Copyright The Phorepoc Authors
+// SPDX-License-Identifier: Apache-2.0
+
+// ssl_mbed.mmp -- the modern-TLS SSL.DLL drop-in (tlsconnection_mbed.cpp) in place of the
+// 2010 networksecurity/tls/group/SSL.MMP. Same name, UIDs, capabilities and frozen exports (the registry points
+// this build at the real eabi/sslU.def): securesocket.dll loads it unchanged.
+// mbedTLS 3.6 is the PREBUILT x32 archive recipes/build_mbedtls.sh builds (one TLS
+// engine, one configuration: phorepoc_mbedtls_config.h), linked through the registry's `x32_archives`; it runs on
+// Open C's libc (calloc/free, time/gmtime_r for certificate validity).
+#include <platform_paths.hrh>
+
+TARGET			ssl.dll
+TARGETTYPE		dll
+UID				0x1000183d 0x10001842
+CAPABILITY		ALL -Tcb
+VENDORID		0x70000001
+// above the ROM's 10.0: securesocket loads "SSL.DLL" with no version, and the loader then takes the highest
+// version on any drive (sf_lepoc.cpp DetailedCompareVersions) -- so this copy wins over Z: whatever the drive order
+VERSION			11.0
+// mbedTLS keeps 128 bytes of writable statics (the lazily built cipher-suite list, the constant-time zero)
+EPOCALLOWDLLDATA
+
+OS_LAYER_SYSTEMINCLUDE_SYMBIAN
+OS_LAYER_LIBC_SYSTEMINCLUDE
+// the mbedTLS include dir ($PHOREPOC_BUILD/tls/mbedtls-src/include) comes from the registry entries' flags
+USERINCLUDE		../mbedtls
+
+SOURCEPATH		.
+SOURCE			tlsconnection_mbed.cpp
+// mbedTLS's entropy source (euser Math::Random)
+SOURCEPATH		../mbedtls
+SOURCE			entropy_symbian.cpp
+
+LIBRARY			euser.lib efsrv.lib esock.lib x509.lib libc.lib
+// the certificate query (MSecurityDialog, as the 2010 TLS provider)
+LIBRARY			ctframework.lib
+
+UNPAGED
+SMPSAFE

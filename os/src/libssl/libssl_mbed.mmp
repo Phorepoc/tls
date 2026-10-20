@@ -1,0 +1,46 @@
+// Copyright The Phorepoc Authors
+// SPDX-License-Identifier: Apache-2.0
+
+// libssl_mbed.mmp -- Open C's libssl.dll (OpenSSL 0.9.8g ABI) with modern TLS from mbedTLS 3.6, in
+// place of the 2010 oss.FCL.sf.os.ossrv/ssl/libssl/group/libssl.mmp. Same name, UIDs, capabilities and frozen
+// exports (the registry points the build at the real eabi/libsslu.def); libcrypto.dll stays the release's 0.9.8g.
+// Phorepoc (x32): mbedTLS is the PREBUILT archive of recipes/build_mbedtls.sh (registry
+// `x32_archives`). ARM (libssl_ph): its C sources are compiled in (registry `extra`).
+#include <platform_paths.hrh>
+
+TARGET			libssl.dll
+TARGETTYPE		dll
+UID				0x1000008d 0x10281F34
+CAPABILITY		All -Tcb
+VENDORID		0x101FB657
+// above the release's 0.10 and later platforms' 0.20 with the SAME major: a load by name keeps the highest version found on
+// any drive, and a static import of libssl{00000014} (javassl, nmcirserviceserver) accepts a higher minor only
+VERSION			0.30
+// mbedTLS's writable statics (PSA state, the lazily built cipher-suite list) + ours (the error strings)
+EPOCALLOWDLLDATA
+
+MACRO			SYMBIAN
+MACRO			OPENSSL_THREADS
+MACRO			_REENTRANT
+
+// (no OS_LAYER_SSL_SYSTEMINCLUDE: the 0.9.8 headers are included as <openssl/...> from stdapis, so their bare
+// names -- ssl.h, x509.h -- never shadow mbedTLS's)
+OS_LAYER_SYSTEMINCLUDE_SYMBIAN
+OS_LAYER_LIBC_SYSTEMINCLUDE
+USERINCLUDE		.
+// the mbedTLS include dir ($PHOREPOC_BUILD/tls/mbedtls-src/include) comes from the registry entries' flags
+USERINCLUDE		../mbedtls
+
+SOURCEPATH		.
+SOURCE			ossl_ssl.c
+SOURCE			ossl_stubs.c
+SOURCE			pe_engine.c
+SOURCE			ossl_trace.cpp
+// mbedTLS's entropy source (euser Math::Random)
+SOURCEPATH		../mbedtls
+SOURCE			entropy_symbian.cpp
+
+LIBRARY			euser.lib efsrv.lib libc.lib libcrypto.lib
+
+UNPAGED
+SMPSAFE

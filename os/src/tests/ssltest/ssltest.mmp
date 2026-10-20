@@ -1,0 +1,19 @@
+// Copyright The Phorepoc Authors
+// SPDX-License-Identifier: Apache-2.0
+
+// ssltest.mmp -- the OpenSSL 0.9.8 API smoke test for the mbedTLS libssl.dll drop-in (ssltest.cpp)
+TARGET			ssltest.exe
+TARGETTYPE		exe
+UID				0x1000007a 0xE7015760
+CAPABILITY		NetworkServices ReadUserData WriteUserData
+VENDORID		0
+// mbedTLS: ECDHE / RSA verification on the stack, the ~150-root CA bundle on the heap
+EPOCSTACKSIZE	0x14000
+EPOCHEAPSIZE	0x10000 0x1000000
+
+OS_LAYER_SYSTEMINCLUDE_SYMBIAN
+OS_LAYER_LIBC_SYSTEMINCLUDE
+SOURCEPATH		.
+SOURCE			ssltest.cpp
+// libssl_mbed.lib = the registry key of OUR libssl.dll (the import is libssl.dll)
+LIBRARY			euser.lib libc.lib libcrypto.lib libssl_mbed.lib
