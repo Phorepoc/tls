@@ -6,7 +6,7 @@
 // whether it resumed (the Phorepoc option KPhSoSessionResumed). The first is a full handshake; the second and third
 // must resume. Output: "[sslresume]" lines on the debug port and in C:\data\sslresume.txt.
 //
-//   sslresume.exe [host [port]]        default: example.com 443
+//   sslresume.exe [host [port [iap]]]  default: example.com 443, the default connection preferences
 //
 // Verdict line: "[sslresume] PASS" (connection 2 and 3 resumed), "[sslresume] FAIL ..." or "[sslresume] SKIP" (the
 // installed SSL.DLL is not ours: no such option). To see the TLS 1.3 / TLS 1.2 behaviours, run it with and without
@@ -19,10 +19,13 @@
 #include <in_sock.h>
 #include <securesocket.h>
 #include <ssl_internal.h>
+#include <es_enum.h>
+#include <commdbconnpref.h>
 
 const TUint KPhSoSessionResumed = 0x50480001;	// (SSL.DLL, tlsconnection_mbed.cpp)
 
 static RFile gLog;
+static RConnection gConn;	// the platform connection (started here: a process that only resolves does not bring a WLAN up)
 
 static void Out(const TDesC8& aLine)
 	{
@@ -48,7 +51,7 @@ static TInt Connection(RSocketServ& aSs, const TDesC& aHost, TInt aPort, TInt aI
 	*aResumed = -1;
 	const TUint32 t0 = User::NTickCount();
 	RHostResolver resolver;
-	TInt err = resolver.Open(aSs, KAfInet, KProtocolInetTcp);
+	TInt err = resolver.Open(aSs, KAfInet, KProtocolInetUdp, gConn);
 	if (err != KErrNone)
 		return err;
 	TNameEntry entry;
@@ -62,7 +65,7 @@ static TInt Connection(RSocketServ& aSs, const TDesC& aHost, TInt aPort, TInt aI
 	addr.SetPort(aPort);
 
 	RSocket sock;
-	err = sock.Open(aSs, KAfInet, KSockStream, KProtocolInetTcp);
+	err = sock.Open(aSs, KAfInet, KSockStream, KProtocolInetTcp, gConn);
 	if (err != KErrNone)
 		return err;
 	sock.Connect(addr, st);
@@ -142,6 +145,13 @@ static TInt Run()
 		TLex pl(p);
 		pl.Val(port);
 		}
+	TInt iap = 0;		// third argument: the IAP id to start (0 = the default connection preferences)
+	TPtrC ip = lex.NextToken();
+	if (ip.Length())
+		{
+		TLex il(ip);
+		il.Val(iap);
+		}
 	RFs fs;
 	if (fs.Connect() == KErrNone)
 		{
@@ -152,6 +162,17 @@ static TInt Run()
 	TInt err = ss.Connect();
 	if (err != KErrNone)
 		return err;
+	if (gConn.Open(ss) == KErrNone)
+		{
+		TCommDbConnPref pref;
+		pref.SetDialogPreference(ECommDbDialogPrefDoNotPrompt);
+		if (iap)
+			pref.SetIapId(iap);
+		TRequestStatus cst;
+		gConn.Start(pref, cst);
+		User::WaitForRequest(cst);
+		Line("[sslresume] RConnection::Start -> %d", cst.Int());
+		}
 
 	TInt resumed[3] = { -1, -1, -1 };
 	TInt ms[3] = { 0, 0, 0 };
@@ -166,6 +187,7 @@ static TInt Run()
 			break;
 			}
 		}
+	gConn.Close();
 	ss.Close();
 	if (fail != KErrNone)
 		Line("[sslresume] FAIL connection error %d", fail);
