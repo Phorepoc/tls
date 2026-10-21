@@ -55,6 +55,13 @@ python3 /pdk/tools/emitter/build_mmp_x32.py ssl libssl_mbed ssltest
 `recipes/build_mbedtls.sh --arm` makes the ARM archive; the ARM entries (`ssl_ph`, `ssl_legacy`, `libssl_ph`) compile
 mbedTLS's sources into the DLL instead.
 
+## Related projects
+
+- [shinovon/symbian-tls](https://github.com/shinovon/symbian-tls) ([nnproject.cc/tls](https://nnproject.cc/tls)):
+  an independent replacement of the system SSL component for stock phones, from Symbian OS v7.0 on (mbedTLS on
+  EKA2, BearSSL on EKA1), installed as a SIS. A good choice for an unmodified older phone; this repo is the TLS layer
+  of the Phorepoc images.
+
 ## Licence
 
 Apache-2.0 (see `LICENSE`), copyright The Phorepoc Authors (`AUTHORS`). mbedTLS is used under its Apache-2.0 option and
