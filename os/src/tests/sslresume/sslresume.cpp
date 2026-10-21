@@ -165,6 +165,23 @@ static TInt Run()
 		return err;
 	// only with an explicit IAP: otherwise the connection is the platform default (implicit start, or the one a
 	// caller such as wlanjoin already holds)
+	if (!iap && gConn.Open(ss) == KErrNone)
+		{
+		// attach to the connection another process (wlanjoin) holds: an implicit start in this process would block
+		TUint count = 0;
+		TInt ar = gConn.EnumerateConnections(count);
+		if (ar == KErrNone && count)
+			{
+			TPckgBuf<TConnectionInfo> info;
+			ar = gConn.GetConnectionInfo(1, info);
+			if (ar == KErrNone)
+				ar = gConn.Attach(info, RConnection::EAttachTypeNormal);
+			}
+		else if (ar == KErrNone)
+			ar = KErrNotFound;
+		Line("[sslresume] attached to the connection -> %d", ar);
+		gConnStarted = (ar == KErrNone);
+		}
 	if (iap && gConn.Open(ss) == KErrNone)
 		{
 		TCommDbConnPref pref;
@@ -191,7 +208,7 @@ static TInt Run()
 			break;
 			}
 		}
-	if (iap)
+	if (iap || gConnStarted)
 		gConn.Close();
 	ss.Close();
 	if (fail != KErrNone)
