@@ -187,8 +187,13 @@ TInt E32Main()
 	TInt err = KErrNoMemory;
 	if (cleanup)
 		{
+		// the secure socket's provider uses active objects: an active scheduler must be installed
+		// (without one the first CSecureSocket call panics E32USER-CBase 44)
+		CActiveScheduler* sched = new CActiveScheduler;
+		CActiveScheduler::Install(sched);
 		TInt result = KErrNone;
 		TRAP(err, result = Run());
+		delete sched;
 		if (err == KErrNone)
 			err = result;
 		delete cleanup;
