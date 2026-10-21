@@ -39,9 +39,10 @@
 #define MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA_ENABLED
 #define MBEDTLS_KEY_EXCHANGE_RSA_ENABLED     /* older servers */
 /* TLS 1.3: mbedTLS 3.6 does 1.3 only through PSA crypto (psa_crypto_init() before the first handshake:
- * curl does it, so does the ssl.dll drop-in); (EC)DHE key exchange only, no PSK */
+ * curl does it, so does the ssl.dll drop-in); (EC)DHE key exchange only; a PSK is only a resumed session ticket */
 #define MBEDTLS_SSL_PROTO_TLS1_3
 #define MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED
+#define MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_PSK_EPHEMERAL_ENABLED  /* resuming a session from its ticket (tls_sesscache.cpp), still with a fresh (EC)DHE */
 #define MBEDTLS_SSL_TLS1_3_COMPATIBILITY_MODE  /* the fake ChangeCipherSpec middleboxes expect */
 #define MBEDTLS_PSA_CRYPTO_C
 #define MBEDTLS_USE_PSA_CRYPTO
