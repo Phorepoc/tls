@@ -6,7 +6,8 @@
 // whether it resumed (the Phorepoc option KPhSoSessionResumed). The first is a full handshake; the second and third
 // must resume. Output: "[sslresume]" lines on the debug port and in C:\data\sslresume.txt.
 //
-//   sslresume.exe [host [port [iap]]]  default: example.com 443, the default connection preferences
+//   sslresume.exe [host [port [iap]]]  default: example.com 443, the default connection preferences (iap -1: start the
+//   default connection in this process; an IAP id: start that one)
 //
 // Verdict line: "[sslresume] PASS" (connection 2 and 3 resumed), "[sslresume] FAIL ..." or "[sslresume] SKIP" (the
 // installed SSL.DLL is not ours: no such option). To see the TLS 1.3 / TLS 1.2 behaviours, run it with and without
@@ -27,6 +28,21 @@ const TUint KPhSoSessionResumed = 0x50480001;	// (SSL.DLL, tlsconnection_mbed.cp
 static RFile gLog;
 static TBool gConnStarted = EFalse;
 static RConnection gConn;	// the platform connection (started here: a process that only resolves does not bring a WLAN up)
+
+// The secure socket's provider runs in this thread's active scheduler: its I/O completions (and the request status of
+// StartClientHandshake / Send / RecvOneOrMore) are only delivered while the scheduler runs, so a plain
+// User::WaitForRequest on them never returns. CWait gives such a call a status and runs the scheduler until it completes.
+class CWait : public CActive
+	{
+public:
+	CWait() : CActive(EPriorityStandard) { CActiveScheduler::Add(this); }
+	~CWait() { Cancel(); }
+	TRequestStatus& Status() { iStatus = KRequestPending; return iStatus; }
+	TInt Wait() { SetActive(); CActiveScheduler::Start(); return iStatus.Int(); }
+private:
+	void RunL() { CActiveScheduler::Stop(); }
+	void DoCancel() {}
+	};
 
 static void Out(const TDesC8& aLine)
 	{
@@ -57,9 +73,11 @@ static TInt Connection(RSocketServ& aSs, const TDesC& aHost, TInt aPort, TInt aI
 		return err;
 	TNameEntry entry;
 	TRequestStatus st;
+	Line("[sslresume] connection %d: resolving", aIndex);
 	resolver.GetByName(aHost, entry, st);
 	User::WaitForRequest(st);
 	resolver.Close();
+	Line("[sslresume] connection %d: resolved -> %d", aIndex, st.Int());
 	if (st.Int() != KErrNone)
 		return st.Int();
 	TInetAddr addr(entry().iAddr);
@@ -71,6 +89,7 @@ static TInt Connection(RSocketServ& aSs, const TDesC& aHost, TInt aPort, TInt aI
 		return err;
 	sock.Connect(addr, st);
 	User::WaitForRequest(st);
+	Line("[sslresume] connection %d: TCP connect -> %d", aIndex, st.Int());
 	if (st.Int() != KErrNone)
 		{
 		sock.Close();
@@ -87,9 +106,10 @@ static TInt Connection(RSocketServ& aSs, const TDesC& aHost, TInt aPort, TInt aI
 	host8.Copy(aHost.Left(128));
 	tls->SetOpt(KSoSSLDomainName, KSolInetSSL, host8);
 	tls->SetDialogMode(EDialogModeUnattended);
-	tls->StartClientHandshake(st);
-	User::WaitForRequest(st);
-	err = st.Int();
+	CWait wait;
+	tls->StartClientHandshake(wait.Status());
+	err = wait.Wait();
+	Line("[sslresume] connection %d: handshake -> %d", aIndex, err);
 	if (err == KErrNone)
 		{
 		TInt resumed = -1;
@@ -102,14 +122,14 @@ static TInt Connection(RSocketServ& aSs, const TDesC& aHost, TInt aPort, TInt aI
 		// some application data, so a TLS 1.3 server's ticket is read (and cached) as well
 		TBuf8<256> req;
 		req.Format(_L8("GET / HTTP/1.1\r\nHost: %S\r\nConnection: close\r\n\r\n"), &host8);
-		tls->Send(req, st);
-		User::WaitForRequest(st);
+		tls->Send(req, wait.Status());
+		TInt serr = wait.Wait();
 		TBuf8<1024> reply;
-		if (st.Int() == KErrNone)
+		if (serr == KErrNone)
 			{
 			TSockXfrLength got;
-			tls->RecvOneOrMore(reply, st, got);
-			User::WaitForRequest(st);
+			tls->RecvOneOrMore(reply, wait.Status(), got);
+			wait.Wait();
 			}
 		*aMs = (TInt)(User::NTickCount() - t0);
 		TBuf8<80> msg(_L8("[sslresume] connection "));
@@ -165,6 +185,15 @@ static TInt Run()
 		return err;
 	// only with an explicit IAP: otherwise the connection is the platform default (implicit start, or the one a
 	// caller such as wlanjoin already holds)
+	if (iap == -1 && gConn.Open(ss) == KErrNone)
+		{
+		// third argument -1: start the default connection explicitly in this process (a stack where it comes up on its own)
+		TRequestStatus cst;
+		gConn.Start(cst);
+		User::WaitForRequest(cst);
+		Line("[sslresume] RConnection::Start (default) -> %d", cst.Int());
+		gConnStarted = (cst.Int() == KErrNone);
+		}
 	if (!iap && gConn.Open(ss) == KErrNone)
 		{
 		// attach to the connection another process (wlanjoin) holds: an implicit start in this process would block
@@ -182,7 +211,7 @@ static TInt Run()
 		Line("[sslresume] attached to the connection -> %d", ar);
 		gConnStarted = (ar == KErrNone);
 		}
-	if (iap && gConn.Open(ss) == KErrNone)
+	if (iap > 0 && gConn.Open(ss) == KErrNone)
 		{
 		TCommDbConnPref pref;
 		pref.SetDialogPreference(ECommDbDialogPrefDoNotPrompt);
@@ -208,7 +237,7 @@ static TInt Run()
 			break;
 			}
 		}
-	if (iap || gConnStarted)
+	if (iap > 0 || gConnStarted)
 		gConn.Close();
 	ss.Close();
 	if (fail != KErrNone)

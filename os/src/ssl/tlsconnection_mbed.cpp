@@ -109,6 +109,14 @@ static void TlsFileLog(const char* aFmt, ...)
 #define TLSLOG(...)
 #endif
 
+#if defined(PHOREPOC_SSL_TRACE) && defined(MBEDTLS_DEBUG_C)
+#include "mbedtls/debug.h"
+static void MbedDebug(void*, int aLevel, const char* aFile, int aLine, const char* aMsg)
+	{
+	RDebug::Printf("PH: [mbed%d] %s:%d %s", aLevel, aFile, aLine, aMsg);
+	}
+#endif
+
 // ---- state shared by every connection in the process ------------------------------------------------------------
 // A plain spin lock: the critical sections below are a few pointer moves (the long work -- parsing the trust anchors,
 // writing the session file -- happens outside them).
@@ -632,6 +640,11 @@ void CTlsConnection::ConstructL()
 	mbedtls_ssl_conf_max_tls_version(&iConf, MBEDTLS_SSL_VERSION_TLS1_2);
 #endif
 	mbedtls_ssl_conf_rng(&iConf, mbedtls_ctr_drbg_random, &iDrbg);
+#if defined(PHOREPOC_SSL_TRACE) && defined(MBEDTLS_DEBUG_C)
+	// a build with MBEDTLS_DEBUG_C added to the configuration: mbedTLS's own protocol trace on the debug port
+	mbedtls_debug_set_threshold(3);
+	mbedtls_ssl_conf_dbg(&iConf, MbedDebug, NULL);
+#endif
 	TLSLOG("[ssl] %08x rng seeded (tls13 %d, session cache %d), loading trust anchors", this, iSettings.tls13, iSettings.session_cache);
 	iCa = AcquireTrustAnchorsL();
 	mbedtls_ssl_conf_ca_chain(&iConf, const_cast<mbedtls_x509_crt*>(iCa), NULL);
