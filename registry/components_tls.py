@@ -66,6 +66,8 @@ COMPONENTS = {
     "ssltest": dict(mmp=os.path.join(OS_ROOT, "src/tests/ssltest/ssltest.mmp"), defs=["__SOFTFP="]),
     # which SSL.DLL a stock phone's loader picks (writes C:\data\sslprobe.txt)
     "sslprobe": dict(mmp=os.path.join(OS_ROOT, "src/tests/sslprobe/sslprobe.mmp"), device=True),
+    # does SSL.DLL resume TLS sessions? three https connections, "[sslresume] PASS" (C:\data\sslresume.txt)
+    "sslresume": dict(mmp=os.path.join(OS_ROOT, "src/tests/sslresume/sslresume.mmp"), defs=["__SOFTFP="]),
 }
 
 # core's `ssl` keeps the 2010 SSL.MMP (the ARM device build of the release's own TLS); with this layer its x32 build is

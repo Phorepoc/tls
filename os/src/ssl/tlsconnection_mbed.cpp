@@ -46,9 +46,23 @@
 #include "psa/crypto.h"
 #endif
 
+#include <stdlib.h>
+#include <string.h>
+#include "tls_conf.h"
+#include "tls_sesscache.h"
+#include "tls_stubcert.h"
+
 _LIT(KCaBundleName, "ca-bundle.crt");
+_LIT(KSettingsName, "ssl.ini");
 _LIT(KCaBundleDir, "\\resource\\ssl\\");
 static const TInt KRecvScratch = 16 * 1024 + 512;	// one TLS record + header
+
+// Phorepoc options on the KSolInetSSL level (no stock client uses them; our own tests and clients can):
+//   GetOpt(int)  KPhSoSessionResumed: 1 if this connection resumed a cached session (no certificate exchange)
+//   SetOpt(des)  KPhSoAlpn:           the ALPN protocols to offer, comma separated ("h2,http/1.1"); before the handshake
+//   GetOpt(des)  KPhSoAlpn:           the protocol the server selected ("" = none)
+const TUint KPhSoSessionResumed = 0x50480001;
+const TUint KPhSoAlpn = 0x50480002;
 
 // PHOREPOC_SSL_TRACE: one RDebug line per handshake result / error
 // PHOREPOC_SSL_FILELOG: the same lines appended to C:\data\ssl_trace.txt (a phone has no debug port)
@@ -94,6 +108,267 @@ static void TlsFileLog(const char* aFmt, ...)
 #else
 #define TLSLOG(...)
 #endif
+
+// ---- state shared by every connection in the process ------------------------------------------------------------
+// A plain spin lock: the critical sections below are a few pointer moves (the long work -- parsing the trust anchors,
+// writing the session file -- happens outside them).
+static void SpinLock(TInt& aLock)
+	{
+	while (User::LockedInc(aLock) != 0)
+		{
+		User::LockedDec(aLock);
+		User::After(1000);
+		}
+	}
+
+static void SpinUnlock(TInt& aLock)
+	{
+	User::LockedDec(aLock);
+	}
+
+// The runtime switches (ssl.ini, see tls_conf.h): re-read for every connection, so a change applies to the next one.
+static void ReadSettings(phtls_conf& aConf)
+	{
+	phtls_conf_defaults(&aConf);
+	RFs fs;
+	if (fs.Connect() != KErrNone)
+		return;
+	TFindFile find(fs);
+	RFile f;
+	if (find.FindByDir(KSettingsName, KCaBundleDir) == KErrNone
+		&& f.Open(fs, find.File(), EFileRead | EFileShareReadersOnly) == KErrNone)
+		{
+		TInt size = 0;
+		RBuf8 text;
+		if (f.Size(size) == KErrNone && size > 0 && size <= 4096 && text.Create(size) == KErrNone)
+			{
+			if (f.Read(text) == KErrNone)
+				phtls_conf_parse(&aConf, reinterpret_cast<const char*>(text.Ptr()), (size_t)text.Length());
+			text.Close();
+			}
+		f.Close();
+		}
+	fs.Close();
+	}
+
+// The trust anchors, parsed once per process and shared (read-only) by every connection. The chain stays alive while
+// any connection uses it and, pinned, for the life of the process (the next connection must not parse ~140
+// certificates again); UnloadDll drops the pin.
+static mbedtls_x509_crt* gCa;
+static TInt gCaRefs;
+static TInt gCaPinned;
+static TInt gCaLock;
+
+// The CA bundle (PEM): read with the file server (no libc stdio in the client's process needed), NUL-terminated
+// for mbedtls_x509_crt_parse. A certificate mbedTLS cannot parse is skipped (parse returns the count of failures).
+static mbedtls_x509_crt* ParseTrustAnchorsL()
+	{
+	RFs fs;
+	User::LeaveIfError(fs.Connect());
+	CleanupClosePushL(fs);
+	// every drive, the loader's order (C: before Z:): Phorepoc ships the bundle as ROM data, a stock phone carries it
+	// on C: next to this DLL's eclipsing copy
+	TFindFile find(fs);
+	User::LeaveIfError(find.FindByDir(KCaBundleName, KCaBundleDir));
+	RFile f;
+	User::LeaveIfError(f.Open(fs, find.File(), EFileRead | EFileShareReadersOnly));
+	CleanupClosePushL(f);
+	TInt size = 0;
+	User::LeaveIfError(f.Size(size));
+	RBuf8 pem;
+	pem.CreateL(size + 1);
+	CleanupClosePushL(pem);
+	User::LeaveIfError(f.Read(pem));
+	pem.Append(TChar(0));
+	mbedtls_x509_crt* crt = static_cast<mbedtls_x509_crt*>(calloc(1, sizeof(mbedtls_x509_crt)));
+	if (crt)
+		{
+		mbedtls_x509_crt_init(crt);
+		int rc = mbedtls_x509_crt_parse(crt, pem.Ptr(), (size_t)pem.Length());
+#ifdef PHOREPOC_SSL_TRACE
+		TInt n = 0;
+		for (const mbedtls_x509_crt* c = crt; c && c->raw.p; c = c->next)
+			++n;
+		TLSLOG("[ssl] %d trust anchors (%d skipped)", n, rc);
+#endif
+		(void)rc;
+		}
+	CleanupStack::PopAndDestroy(3, &fs);
+	if (!crt)
+		User::Leave(KErrNoMemory);
+	if (!crt->raw.p)
+		{
+		free(crt);
+		User::Leave(KErrNotFound);
+		}
+	return crt;
+	}
+
+static void FreeChain(mbedtls_x509_crt* aCrt)
+	{
+	if (aCrt)
+		{
+		mbedtls_x509_crt_free(aCrt);
+		free(aCrt);
+		}
+	}
+
+static const mbedtls_x509_crt* AcquireTrustAnchorsL()
+	{
+	SpinLock(gCaLock);
+	mbedtls_x509_crt* ca = gCa;
+	if (ca)
+		++gCaRefs;
+	SpinUnlock(gCaLock);
+	if (ca)
+		return ca;
+	mbedtls_x509_crt* fresh = ParseTrustAnchorsL();
+	SpinLock(gCaLock);
+	if (gCa)								// another thread was faster: use its chain
+		{
+		ca = gCa;
+		++gCaRefs;
+		}
+	else
+		{
+		ca = gCa = fresh;
+		fresh = NULL;
+		gCaRefs = 2;						// the pin + this connection
+		gCaPinned = 1;
+		}
+	SpinUnlock(gCaLock);
+	FreeChain(fresh);
+	return ca;
+	}
+
+static void ReleaseTrustAnchors()
+	{
+	mbedtls_x509_crt* dead = NULL;
+	SpinLock(gCaLock);
+	if (gCa && --gCaRefs == 0)
+		{
+		dead = gCa;
+		gCa = NULL;
+		}
+	SpinUnlock(gCaLock);
+	FreeChain(dead);
+	}
+
+static void UnpinTrustAnchors()
+	{
+	SpinLock(gCaLock);
+	TInt pinned = gCaPinned;
+	gCaPinned = 0;
+	SpinUnlock(gCaLock);
+	if (pinned)
+		ReleaseTrustAnchors();
+	}
+
+// The session cache (tls_sesscache.h): in memory per process, and a file in the process's private data so a restart
+// resumes too. Written to a temporary file and renamed over the old one (RFs::Replace is atomic): a crash or a power
+// cut leaves the old file or the new one, never half of one; a damaged file is ignored (CRC).
+static phsc gSess;
+static TInt gSessLock;
+static TInt gSessLoaded;
+_LIT(KSessFile, "phtls_sess.dat");
+_LIT(KSessTmp, "phtls_sess.tmp");
+static const TInt KSessFileMax = 512 * 1024;
+
+static TUint64 NowSeconds()
+	{
+	TTime now;
+	now.UniversalTime();
+	const TTime epoch(TDateTime(1970, EJanuary, 0, 0, 0, 0, 0));
+	return static_cast<TUint64>(now.MicroSecondsFrom(epoch).Int64() / 1000000);
+	}
+
+// the process's private directory on C: (created if needed); the names go after the session path
+static TBool OpenPrivate(RFs& aFs, TFileName& aDir)
+	{
+	if (aFs.Connect() != KErrNone)
+		return EFalse;
+	aFs.CreatePrivatePath(EDriveC);
+	if (aFs.SetSessionToPrivate(EDriveC) != KErrNone || aFs.SessionPath(aDir) != KErrNone)
+		{
+		aFs.Close();
+		return EFalse;
+		}
+	return ETrue;
+	}
+
+static void SessionsLoadOnce(TBool aPersist)
+	{
+	SpinLock(gSessLock);
+	TInt first = !gSessLoaded;
+	gSessLoaded = 1;
+	SpinUnlock(gSessLock);
+	if (!first || !aPersist)
+		return;
+	RFs fs;
+	TFileName path;
+	if (!OpenPrivate(fs, path))
+		return;
+	path.Append(KSessFile);
+	RFile f;
+	TInt size = 0;
+	if (f.Open(fs, path, EFileRead | EFileShareReadersOnly) == KErrNone)
+		{
+		RBuf8 img;
+		if (f.Size(size) == KErrNone && size > 0 && size <= KSessFileMax && img.Create(size) == KErrNone)
+			{
+			if (f.Read(img) == KErrNone)
+				{
+				SpinLock(gSessLock);
+				phsc_deserialize(&gSess, img.Ptr(), (size_t)img.Length(), NowSeconds());
+				SpinUnlock(gSessLock);
+				}
+			img.Close();
+			}
+		f.Close();
+		}
+	fs.Close();
+	}
+
+static void SessionsSave()
+	{
+	const TUint64 now = NowSeconds();
+	SpinLock(gSessLock);
+	size_t need = phsc_serialize(&gSess, now, NULL, 0);
+	unsigned char* img = need ? static_cast<unsigned char*>(malloc(need)) : NULL;
+	if (img)
+		need = phsc_serialize(&gSess, now, img, need);
+	SpinUnlock(gSessLock);
+	RFs fs;
+	TFileName dir;
+	if (!OpenPrivate(fs, dir))
+		{
+		free(img);
+		return;
+		}
+	TFileName path(dir), tmp(dir);
+	path.Append(KSessFile);
+	tmp.Append(KSessTmp);
+	if (need == 0)
+		fs.Delete(path);					// nothing worth keeping
+	else if (img)
+		{
+		RFile f;
+		TInt err = f.Replace(fs, tmp, EFileWrite);
+		if (err == KErrNone)
+			{
+			err = f.Write(TPtrC8(img, (TInt)need));
+			if (err == KErrNone)
+				err = f.Flush();
+			f.Close();
+			}
+		if (err == KErrNone)
+			err = fs.Replace(tmp, path);
+		if (err != KErrNone)
+			fs.Delete(tmp);
+		}
+	fs.Close();
+	free(img);
+	}
 
 class CTlsConnection;
 
@@ -155,7 +430,7 @@ public:
 	void Close();
 	TInt CurrentCipherSuite(TDes8& aCipherSuite);
 	TDialogMode DialogMode() { TLSLOG("[ssl] DialogMode"); return iDialogMode; }
-	void FlushSessionCache() { TLSLOG("[ssl] FlushSessionCache"); }
+	void FlushSessionCache();
 	TInt GetOpt(TUint aOptionName, TUint aOptionLevel, TDes8& aOption);
 	TInt GetOpt(TUint aOptionName, TUint aOptionLevel, TInt& aOption);
 	TInt Protocol(TDes& aProtocol);
@@ -183,7 +458,14 @@ public:
 private:
 	CTlsConnection(RSocket* aSocket, MGenericSecureSocket* aGeneric);
 	void ConstructL();
-	void LoadTrustAnchorsL();
+	static int VerifyCb(void* aCtx, mbedtls_x509_crt* aCrt, int aDepth, uint32_t* aFlags);
+	TUint SessionPort();
+	void TryResume();
+	void CacheSession();
+	void ForgetSession();
+	const mbedtls_x509_crt* PeerCert();
+	TPtrC8 UiCertDer(const mbedtls_x509_crt& aPeer);
+	CX509Certificate* NewDisplayCert(const mbedtls_x509_crt& aPeer);
 	static void Fail(TRequestStatus& aStatus, TInt aErr);
 	void StartWrite(const TDesC8& aDesc, TRequestStatus& aStatus, TSockXfrLength* aLen);
 	void StartRead(TDes8& aDesc, TRequestStatus& aStatus, TSockXfrLength* aLen, TBool aFill);
@@ -210,7 +492,13 @@ private:
 	mbedtls_ssl_config iConf;
 	mbedtls_ctr_drbg_context iDrbg;
 	mbedtls_entropy_context iEntropy;
-	mbedtls_x509_crt iCa;
+	const mbedtls_x509_crt* iCa;	// the process-wide trust anchors (refcounted, see AcquireTrustAnchorsL)
+	phtls_conf iSettings;			// ssl.ini, read when the connection was made
+	TBool iSessionOffered;			// a cached session went into the ClientHello
+	TBool iFullVerify;				// the certificate chain was verified in this handshake: not a resumption
+	TBuf8<64> iAlpn;				// KPhSoAlpn, comma separated
+	char iAlpnZ[64];				// ... NUL separated, what mbedTLS points at
+	const char* iAlpnList[9];
 	TBool iConnected;
 	TBool iClosed;
 	TInt iFatal;					// sticky transport / protocol error
@@ -243,6 +531,10 @@ private:
 	CTlsIo* iSender;
 	CTlsIo* iReceiver;
 	CX509Certificate* iServerCert;
+	TBool iUiCertTried;
+	HBufC8* iUiCertDer;				// the display certificate's DER, when the platform cannot parse the real one
+	HBufC8* iResumedCert;			// the cached session's server certificate (DER)
+	mbedtls_x509_crt iResumedCrt;	// ... parsed, on demand
 	};
 
 // ---- the transport AOs ------------------------------------------------------------------------------------------
@@ -285,6 +577,18 @@ EXPORT_C MSecureSocket* CTlsConnection::NewL(MGenericSecureSocket& aSocket, cons
 
 EXPORT_C void CTlsConnection::UnloadDll(TAny* /*aPtr*/)
 	{
+	UnpinTrustAnchors();		// the shared trust anchors go once the last connection is gone
+	}
+
+// Forget every cached session (memory and file): a client asking for a clean slate.
+void CTlsConnection::FlushSessionCache()
+	{
+	TLSLOG("[ssl] FlushSessionCache");
+	SpinLock(gSessLock);
+	phsc_clear(&gSess);
+	SpinUnlock(gSessLock);
+	if (iSettings.session_persist)
+		SessionsSave();			// (an empty cache removes the file)
 	}
 
 CTlsConnection::CTlsConnection(RSocket* aSocket, MGenericSecureSocket* aGeneric)
@@ -294,7 +598,8 @@ CTlsConnection::CTlsConnection(RSocket* aSocket, MGenericSecureSocket* aGeneric)
 	mbedtls_ssl_config_init(&iConf);
 	mbedtls_ctr_drbg_init(&iDrbg);
 	mbedtls_entropy_init(&iEntropy);
-	mbedtls_x509_crt_init(&iCa);
+	phtls_conf_defaults(&iSettings);
+	mbedtls_x509_crt_init(&iResumedCrt);
 	}
 
 void CTlsConnection::ConstructL()
@@ -318,16 +623,23 @@ void CTlsConnection::ConstructL()
 	if (mbedtls_ssl_config_defaults(&iConf, MBEDTLS_SSL_IS_CLIENT, MBEDTLS_SSL_TRANSPORT_STREAM,
 									MBEDTLS_SSL_PRESET_DEFAULT))
 		User::Leave(KErrGeneral);
+	ReadSettings(iSettings);
 	mbedtls_ssl_conf_min_tls_version(&iConf, MBEDTLS_SSL_VERSION_TLS1_2);
 #if defined(MBEDTLS_SSL_PROTO_TLS1_3)
-	mbedtls_ssl_conf_max_tls_version(&iConf, MBEDTLS_SSL_VERSION_TLS1_3);
+	// ssl.ini "tls13 = 0": the kill switch for servers / middleboxes that break TLS 1.3 (default: on)
+	mbedtls_ssl_conf_max_tls_version(&iConf, iSettings.tls13 ? MBEDTLS_SSL_VERSION_TLS1_3 : MBEDTLS_SSL_VERSION_TLS1_2);
 #else
 	mbedtls_ssl_conf_max_tls_version(&iConf, MBEDTLS_SSL_VERSION_TLS1_2);
 #endif
 	mbedtls_ssl_conf_rng(&iConf, mbedtls_ctr_drbg_random, &iDrbg);
-	TLSLOG("[ssl] %08x rng seeded, loading trust anchors", this);
-	LoadTrustAnchorsL();
-	mbedtls_ssl_conf_ca_chain(&iConf, &iCa, NULL);
+	TLSLOG("[ssl] %08x rng seeded (tls13 %d, session cache %d), loading trust anchors", this, iSettings.tls13, iSettings.session_cache);
+	iCa = AcquireTrustAnchorsL();
+	mbedtls_ssl_conf_ca_chain(&iConf, const_cast<mbedtls_x509_crt*>(iCa), NULL);
+	mbedtls_ssl_conf_verify(&iConf, &CTlsConnection::VerifyCb, this);
+#if defined(MBEDTLS_SSL_PROTO_TLS1_3) && defined(MBEDTLS_SSL_SESSION_TICKETS)
+	// a TLS 1.3 ticket arrives after the handshake: have mbedTLS report it from the read, where CacheSession stores it
+	mbedtls_ssl_conf_tls13_enable_signal_new_session_tickets(&iConf, MBEDTLS_SSL_TLS1_3_SIGNAL_NEW_SESSION_TICKETS_ENABLED);
+#endif
 	// OPTIONAL: a certificate that fails verification ends the handshake here, not in mbedTLS -- attended mode then
 	// asks the user as the 2010 TLS provider does (Progress), unattended mode refuses it
 	mbedtls_ssl_conf_authmode(&iConf, MBEDTLS_SSL_VERIFY_OPTIONAL);
@@ -337,40 +649,6 @@ void CTlsConnection::ConstructL()
 	TLSLOG("[ssl] %08x constructed", this);
 	}
 
-// The CA bundle (PEM): read with the file server (no libc stdio in the client's process needed), NUL-terminated
-// for mbedtls_x509_crt_parse. A certificate mbedTLS cannot parse is skipped (parse returns the count of failures).
-void CTlsConnection::LoadTrustAnchorsL()
-	{
-	RFs fs;
-	User::LeaveIfError(fs.Connect());
-	CleanupClosePushL(fs);
-	// every drive, the loader's order (C: before Z:): Phorepoc ships the bundle as ROM data, a stock phone carries it
-	// on C: next to this DLL's eclipsing copy
-	TFindFile find(fs);
-	User::LeaveIfError(find.FindByDir(KCaBundleName, KCaBundleDir));
-	RFile f;
-	User::LeaveIfError(f.Open(fs, find.File(), EFileRead | EFileShareReadersOnly));
-	CleanupClosePushL(f);
-	TInt size = 0;
-	User::LeaveIfError(f.Size(size));
-	RBuf8 pem;
-	pem.CreateL(size + 1);
-	CleanupClosePushL(pem);
-	User::LeaveIfError(f.Read(pem));
-	pem.Append(TChar(0));
-	int rc = mbedtls_x509_crt_parse(&iCa, pem.Ptr(), (size_t)pem.Length());
-#ifdef PHOREPOC_SSL_TRACE
-	TInt n = 0;
-	for (const mbedtls_x509_crt* c = &iCa; c && c->raw.p; c = c->next)
-		++n;
-	TLSLOG("[ssl] %d trust anchors (%d skipped)", n, rc);
-#endif
-	(void)rc;
-	CleanupStack::PopAndDestroy(3, &fs);
-	if (!iCa.raw.p)
-		User::Leave(KErrNotFound);
-	}
-
 CTlsConnection::~CTlsConnection()
 	{
 	TLSLOG("[ssl] %08x destroyed", this);
@@ -378,11 +656,15 @@ CTlsConnection::~CTlsConnection()
 	delete iSender;
 	delete iReceiver;
 	delete iServerCert;
+	delete iUiCertDer;
+	delete iResumedCert;
+	mbedtls_x509_crt_free(&iResumedCrt);
 	mbedtls_ssl_free(&iSsl);
 	mbedtls_ssl_config_free(&iConf);
 	mbedtls_ctr_drbg_free(&iDrbg);
 	mbedtls_entropy_free(&iEntropy);
-	mbedtls_x509_crt_free(&iCa);
+	if (iCa)
+		ReleaseTrustAnchors();
 	iOut.Close();
 	iSending.Close();
 	iIn.Close();
@@ -554,6 +836,168 @@ void CTlsConnection::DialogDone(TInt aResult)
 	Progress();
 	}
 
+// ---- session resumption -----------------------------------------------------------------------------------------
+// mbedTLS calls this for each certificate it verifies, i.e. only in a full handshake (a resumed session sends none):
+// that is how a connection knows whether it resumed. It never changes the verdict.
+int CTlsConnection::VerifyCb(void* aCtx, mbedtls_x509_crt*, int, uint32_t*)
+	{
+	static_cast<CTlsConnection*>(aCtx)->iFullVerify = ETrue;
+	return 0;
+	}
+
+// the cache is keyed by host and port: a transport that cannot say which port it is connected to is taken as 443
+TUint CTlsConnection::SessionPort()
+	{
+	if (iSocket)
+		{
+		TSockAddr addr;
+		iSocket->RemoteName(addr);
+		if (addr.Port())
+			return addr.Port();
+		}
+	return 443;
+	}
+
+// Before the handshake: offer the cached session for this host and port, if there is one.
+void CTlsConnection::TryResume()
+	{
+	if (!iSettings.session_cache || iHost.Length() == 0)
+		return;
+	TBuf8<256> host(iHost);
+	const char* name = (const char*)host.PtrZ();
+	const TUint port = SessionPort();
+	SessionsLoadOnce(iSettings.session_persist);
+	size_t len = 0;
+	unsigned char flags = 0;
+	SpinLock(gSessLock);
+	unsigned char* blob = phsc_take(&gSess, name, port, NowSeconds(), &len, &flags);
+	SpinUnlock(gSessLock);
+	if (!blob)
+		return;
+	unsigned char* cert = NULL;
+	size_t certLen = 0;
+	if (phtls_session_import(&iSsl, blob, len, &cert, &certLen) == 0)
+		{
+		iSessionOffered = ETrue;
+		if (cert && certLen)
+			{
+			iResumedCert = HBufC8::New((TInt)certLen);		// (best effort: only ServerCert() wants it)
+			if (iResumedCert)
+				iResumedCert->Des().Copy(cert, (TInt)certLen);
+			}
+		}
+	else
+		{
+		// damaged or from another mbedTLS: do not offer it again
+		SpinLock(gSessLock);
+		phsc_remove(&gSess, name, port);
+		SpinUnlock(gSessLock);
+		}
+	free(blob);
+	free(cert);
+	TLSLOG("[ssl] %08x session %s", this, iSessionOffered ? "offered" : "import failed");
+	}
+
+// The server certificate: from the handshake, or -- on a resumed connection, which has no Certificate message (and a
+// TLS 1.3 session image carries none) -- the one the cached session was established with.
+const mbedtls_x509_crt* CTlsConnection::PeerCert()
+	{
+	const mbedtls_x509_crt* peer = mbedtls_ssl_get_peer_cert(&iSsl);
+	if (peer || !iResumedCert || !iConnected || !iSessionOffered || iFullVerify)
+		return peer;
+	if (!iResumedCrt.raw.p
+		&& mbedtls_x509_crt_parse_der(&iResumedCrt, iResumedCert->Ptr(), (size_t)iResumedCert->Length()) != 0)
+		{
+		mbedtls_x509_crt_free(&iResumedCrt);
+		mbedtls_x509_crt_init(&iResumedCrt);
+		}
+	return iResumedCrt.raw.p ? &iResumedCrt : NULL;
+	}
+
+// After a clean handshake (TLS 1.2) or when a ticket arrives (TLS 1.3): remember the session.
+void CTlsConnection::CacheSession()
+	{
+	if (!iSettings.session_cache || iHost.Length() == 0 || !iConnected)
+		return;
+	unsigned char* blob = NULL;
+	size_t len = 0;
+	unsigned char flags = 0;
+	uint32_t lifetime = 0;
+	if (phtls_session_export(&iSsl, &blob, &len, &flags, &lifetime) != 0)
+		return;
+	TBuf8<256> host(iHost);
+	SpinLock(gSessLock);
+	phsc_put(&gSess, (const char*)host.PtrZ(), SessionPort(), blob, len, flags, NowSeconds(), lifetime);
+	SpinUnlock(gSessLock);
+	free(blob);
+	if (iSettings.session_persist)
+		SessionsSave();
+	TLSLOG("[ssl] %08x session cached (%d bytes, lifetime %d)", this, (TInt)len, (TInt)lifetime);
+	}
+
+// A handshake that failed with a cached session in it: drop the entry (a server that now refuses it outright).
+void CTlsConnection::ForgetSession()
+	{
+	if (!iSessionOffered)
+		return;
+	iSessionOffered = EFalse;
+	TBuf8<256> host(iHost);
+	SpinLock(gSessLock);
+	phsc_remove(&gSess, (const char*)host.PtrZ(), SessionPort());
+	SpinUnlock(gSessLock);
+	}
+
+// ---- certificates for the platform's UI -------------------------------------------------------------------------
+// The platform's X.509 parser (x509.dll) predates today's certificates (new curves, RSA-PSS keys ...), and the
+// security dialog / page info built on it can crash on what it cannot parse. If it cannot parse the server
+// certificate, hand out a display copy instead (tls_stubcert.h): same subject, issuer, serial and validity, a
+// placeholder key. mbedTLS has already verified the real certificate.
+CX509Certificate* CTlsConnection::NewDisplayCert(const mbedtls_x509_crt& aPeer)
+	{
+	for (TInt style = PHSTUB_FULL_NAMES; style <= PHSTUB_SIMPLE_NAMES; ++style)
+		{
+		unsigned char* der = NULL;
+		size_t n = phstub_build(&aPeer, style, &der);
+		if (!n)
+			continue;
+		CX509Certificate* cert = NULL;
+		TRAPD(err, cert = CX509Certificate::NewL(TPtrC8(der, (TInt)n)));
+		if (err == KErrNone && cert)
+			{
+			delete iUiCertDer;
+			iUiCertDer = HBufC8::New((TInt)n);
+			if (iUiCertDer)
+				iUiCertDer->Des().Copy(der, (TInt)n);
+			free(der);
+			TLSLOG("[ssl] %08x display certificate (style %d, %d bytes)", this, style, (TInt)n);
+			return cert;
+			}
+		free(der);
+		}
+	return NULL;
+	}
+
+// The DER the certificate dialog is given: the real certificate, or the display copy if the platform cannot parse
+// the real one.
+TPtrC8 CTlsConnection::UiCertDer(const mbedtls_x509_crt& aPeer)
+	{
+	TPtrC8 real(aPeer.raw.p, (TInt)aPeer.raw.len);
+	if (!iUiCertTried)
+		{
+		iUiCertTried = ETrue;
+		if (!iServerCert)
+			{
+			TRAPD(err, iServerCert = CX509Certificate::NewL(real));
+			if (err != KErrNone)
+				{
+				iServerCert = NULL;
+				iServerCert = NewDisplayCert(aPeer);		// (also fills iUiCertDer)
+				}
+			}
+		}
+	return iUiCertDer ? TPtrC8(*iUiCertDer) : real;
+	}
+
 // Hand queued ciphertext to the transport (one send outstanding).
 void CTlsConnection::Flush()
 	{
@@ -638,7 +1082,8 @@ void CTlsConnection::Progress()
 	if (iHandshake && !iConnected && !iVerifyPending)
 		{
 		int rc = mbedtls_ssl_handshake(&iSsl);
-		const uint32_t flags = rc == 0 ? mbedtls_ssl_get_verify_result(&iSsl) : 0;
+		const TBool resumed = iSessionOffered && !iFullVerify;		// (nothing to verify: the session was verified when it was made)
+		const uint32_t flags = (rc == 0 && !resumed) ? mbedtls_ssl_get_verify_result(&iSsl) : 0;
 		if (rc == 0 && flags && !PeerCertAccepted(EFalse))
 			{
 			if (iDialogMode == EDialogModeUnattended)
@@ -650,7 +1095,7 @@ void CTlsConnection::Progress()
 			TLSLOG("[ssl] %08x certificate flags 0x%x: asking the user", this, (TUint)flags);
 			TInt err = KErrNotFound;
 			if (peer)
-				TRAP(err, StartDialogL(flags, TPtrC8(peer->raw.p, peer->raw.len)));
+				TRAP(err, StartDialogL(flags, UiCertDer(*peer)));
 			if (err != KErrNone)
 				{
 				RefusePeerCert(MapVerify(flags));	// no dialog available: as unattended
@@ -663,7 +1108,11 @@ void CTlsConnection::Progress()
 		if (rc == 0)
 			{
 			iConnected = ETrue;
-			TLSLOG("[ssl] handshake done: %s %s", mbedtls_ssl_get_version(&iSsl), mbedtls_ssl_get_ciphersuite(&iSsl));
+			TLSLOG("[ssl] handshake done: %s %s%s", mbedtls_ssl_get_version(&iSsl), mbedtls_ssl_get_ciphersuite(&iSsl),
+				   iSessionOffered && !iFullVerify ? " (resumed)" : "");
+			// TLS 1.2: the session (ticket / id) exists now; TLS 1.3: it arrives as a ticket in the first read
+			if (mbedtls_ssl_get_version_number(&iSsl) == MBEDTLS_SSL_VERSION_TLS1_2)
+				CacheSession();
 			if (iOut.Length() == 0)
 				Complete(iHandshake, KErrNone);
 			}
@@ -672,6 +1121,7 @@ void CTlsConnection::Progress()
 		else
 			{
 			TLSLOG("[ssl] handshake failed: -0x%04x", -rc);
+			ForgetSession();
 			Flush();					// the alert, if any
 			FailAll(MapErr(rc));
 			return;
@@ -699,6 +1149,7 @@ void CTlsConnection::Progress()
 
 	if (iRead && iConnected)
 		{
+		TInt wantRetries = 0;
 		for (;;)
 			{
 			TInt room = iReadDes->MaxLength() - iReadDes->Length();
@@ -713,6 +1164,10 @@ void CTlsConnection::Progress()
 				}
 			else if (rc == MBEDTLS_ERR_SSL_WANT_READ || rc == MBEDTLS_ERR_SSL_WANT_WRITE)
 				{
+				// mbedTLS answers WANT_READ once after it consumed a post-handshake message (a TLS 1.3 ticket) even with
+				// the next record already queued: ask again rather than wait for bytes that are already here
+				if (iInPos < iIn.Length() && ++wantRetries <= 4)
+					continue;
 				needRecv = ETrue;
 				break;
 				}
@@ -727,7 +1182,10 @@ void CTlsConnection::Progress()
 				}
 #ifdef MBEDTLS_SSL_PROTO_TLS1_3
 			else if (rc == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET)
+				{
+				CacheSession();			// a resumption ticket for the next connection to this host
 				continue;
+				}
 #endif
 			else
 				{
@@ -774,6 +1232,9 @@ void CTlsConnection::StartClientHandshake(TRequestStatus& aStatus)
 		}
 	iHandshake = &aStatus;
 	TLSLOG("[ssl] %08x client handshake starts", this);
+	if (iAlpn.Length())
+		mbedtls_ssl_conf_alpn_protocols(&iConf, iAlpnList);
+	TryResume();
 	Progress();
 	}
 
@@ -912,13 +1373,20 @@ const CX509Certificate* CTlsConnection::ServerCert()
 	TLSLOG("[ssl] %08x ServerCert (cached %d)", this, iServerCert != NULL);
 	if (iServerCert)
 		return iServerCert;
-	const mbedtls_x509_crt* peer = mbedtls_ssl_get_peer_cert(&iSsl);
+	const mbedtls_x509_crt* peer = PeerCert();
 	if (!peer)
 		return NULL;
 	TPtrC8 der(peer->raw.p, (TInt)peer->raw.len);
 	TRAPD(err, iServerCert = CX509Certificate::NewL(der));
 	TLSLOG("[ssl] %08x ServerCert: %d bytes DER -> x509 err %d", this, der.Length(), err);
-	return err == KErrNone ? iServerCert : NULL;
+	if (err != KErrNone)
+		{
+		// the platform cannot parse this (modern) certificate: a display copy, never NULL for the UI to trip over
+		iServerCert = NULL;
+		iUiCertTried = ETrue;
+		iServerCert = NewDisplayCert(*peer);
+		}
+	return iServerCert;
 	}
 
 TInt CTlsConnection::CurrentCipherSuite(TDes8& aCipherSuite)
@@ -958,6 +1426,11 @@ TInt CTlsConnection::SetAvailableCipherSuites(const TDesC8& /*aCiphers*/)
 TInt CTlsConnection::GetOpt(TUint aOptionName, TUint aOptionLevel, TInt& aOption)
 	{
 	TLSLOG("[ssl] %08x GetOpt(int) %x/%x", this, aOptionName, aOptionLevel);
+	if (aOptionLevel == KSolInetSSL && aOptionName == KPhSoSessionResumed)
+		{
+		aOption = (iConnected && iSessionOffered && !iFullVerify) ? 1 : 0;
+		return KErrNone;
+		}
 	if (aOptionName == KSOReadBytesPending && aOptionLevel == KSOLSocket)
 		{
 		aOption = (TInt)mbedtls_ssl_get_bytes_avail(&iSsl);
@@ -971,6 +1444,14 @@ TInt CTlsConnection::GetOpt(TUint aOptionName, TUint aOptionLevel, TInt& aOption
 TInt CTlsConnection::GetOpt(TUint aOptionName, TUint aOptionLevel, TDes8& aOption)
 	{
 	TLSLOG("[ssl] %08x GetOpt(des) %x/%x", this, aOptionName, aOptionLevel);
+	if (aOptionLevel == KSolInetSSL && aOptionName == KPhSoAlpn)
+		{
+		const char* proto = iConnected ? mbedtls_ssl_get_alpn_protocol(&iSsl) : NULL;
+		aOption.Zero();
+		if (proto)
+			aOption.Copy(TPtrC8(reinterpret_cast<const TUint8*>(proto), (TInt)strlen(proto)).Left(aOption.MaxLength()));
+		return KErrNone;
+		}
 	if (aOptionLevel == KSolInetSSL)
 		return KErrNotSupported;
 	if (iSocket)
@@ -996,6 +1477,40 @@ TInt CTlsConnection::SetOpt(TUint aOptionName, TUint aOptionLevel, const TDesC8&
 		if (aOption.Length() < (TInt)sizeof(TUint))
 			return KErrArgument;
 		return SetDialogMode((TDialogMode)*(const TUint*)aOption.Ptr());
+	case KPhSoAlpn:
+		{
+		// "h2,http/1.1": at most 8 names, 63 bytes in all (mbedTLS keeps pointers into iAlpnZ)
+		if (iConnected || iHandshake || aOption.Length() >= (TInt)sizeof(iAlpnZ))
+			return KErrArgument;
+		TInt n = 0, count = 0;
+		TBool start = ETrue;
+		for (TInt i = 0; i < aOption.Length(); ++i)
+			{
+			const TUint8 c = aOption[i];
+			if (c == ',')
+				{
+				if (start || count == 8)
+					return KErrArgument;
+				iAlpnZ[n++] = 0;
+				start = ETrue;
+				continue;
+				}
+			if (start)
+				{
+				if (count == 8)
+					return KErrArgument;
+				iAlpnList[count++] = &iAlpnZ[n];
+				start = EFalse;
+				}
+			iAlpnZ[n++] = (char)c;
+			}
+		if (start && aOption.Length())
+			return KErrArgument;		// empty name
+		iAlpnZ[n] = 0;
+		iAlpnList[count] = NULL;
+		iAlpn.Copy(aOption.Left(iAlpn.MaxLength()));
+		return KErrNone;
+		}
 	case KSoUseSSLv2Handshake:	// never an SSLv2 hello
 	default:
 		return KErrNone;		// the other SSL options (dialogs, PSK, NULL ciphers ...) do not apply

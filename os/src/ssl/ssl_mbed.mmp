@@ -27,6 +27,10 @@ USERINCLUDE		../mbedtls
 
 SOURCEPATH		.
 SOURCE			tlsconnection_mbed.cpp
+// portable parts, host-tested (os/src/tests/hosttls): session cache, display certificate, runtime switches
+SOURCE			tls_sesscache.cpp
+SOURCE			tls_stubcert.cpp
+SOURCE			tls_conf.cpp
 // mbedTLS's entropy source (euser Math::Random)
 SOURCEPATH		../mbedtls
 SOURCE			entropy_symbian.cpp
