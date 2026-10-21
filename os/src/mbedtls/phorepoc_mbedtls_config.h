@@ -37,7 +37,8 @@
 #define MBEDTLS_SSL_SESSION_TICKETS
 #define MBEDTLS_KEY_EXCHANGE_ECDHE_RSA_ENABLED
 #define MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA_ENABLED
-#define MBEDTLS_KEY_EXCHANGE_RSA_ENABLED     /* older servers */
+/* (static-RSA key exchange and the CBC suites are left out on purpose: no forward secrecy / padding-oracle class;
+ * SSL Labs grades them WEAK. ECDHE with AES-GCM or ChaCha20-Poly1305 only; servers that offer nothing else fail.) */
 /* TLS 1.3: mbedTLS 3.6 does 1.3 only through PSA crypto (psa_crypto_init() before the first handshake:
  * curl does it, so does the ssl.dll drop-in); (EC)DHE key exchange only; a PSK is only a resumed session ticket */
 #define MBEDTLS_SSL_PROTO_TLS1_3
@@ -52,7 +53,7 @@
 #define MBEDTLS_AES_C
 #define MBEDTLS_AES_ROM_TABLES
 #define MBEDTLS_GCM_C
-#define MBEDTLS_CIPHER_MODE_CBC
+/* MBEDTLS_CIPHER_MODE_CBC: not defined, see above */
 #define MBEDTLS_CHACHA20_C
 #define MBEDTLS_POLY1305_C
 #define MBEDTLS_CHACHAPOLY_C
