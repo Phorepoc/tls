@@ -18,6 +18,7 @@ MBEDTLS_SRC = os.path.join(BUILD, "tls/mbedtls-src")
 MBEDTLS_INC = ["-I", os.path.join(MBEDTLS_SRC, "include"), "-iquote", os.path.join(MBEDTLS_SRC, "library")]
 MBEDTLS_CFG = "MBEDTLS_CONFIG_FILE=<phorepoc_mbedtls_config.h>"   # (angle brackets: a quoted -D does not survive the shell)
 CA_BUNDLE = "resource\\ssl\\ca-bundle.crt=thirdparty/x86/res/ca-bundle.crt"
+SSL_INI = "resource\\ssl\\ssl.ini=data/ssl.ini"
 SSL_DEF = "oss.FCL.sf.os.networkingsrv/networksecurity/tls/eabi/sslU.def"
 LIBSSL_DEF = "oss.FCL.sf.os.ossrv/ssl/libssl/eabi/libsslu.def"
 
@@ -35,7 +36,7 @@ COMPONENTS = {
                    **{"def": SSL_DEF},
                    flags=MBEDTLS_INC,
                    defs=[MBEDTLS_CFG, "__SOFTFP=", "MBEDTLS_PLATFORM_MS_TIME_ALT"],
-                   rom_data=[CA_BUNDLE],
+                   rom_data=[CA_BUNDLE, SSL_INI],
                    extra=_mbedtls_sources()),
     # the same drop-in as a RAM-loaded image for a stock Symbian OS 9.x phone (Nokia 701): the stock loader's image
     # format and exception model (device=True); trace lines go to C:\data\ssl_trace.txt (a phone has no debug port)
@@ -77,5 +78,5 @@ EXTEND = {} if os.environ.get("SSL_2010") else {
                 **{"def": SSL_DEF},
                 flags=MBEDTLS_INC,
                 x32_archives=["thirdparty/x86/lib/libmbedtls.a"],
-                rom_data=[CA_BUNDLE]),
+                rom_data=[CA_BUNDLE, SSL_INI]),
 }
