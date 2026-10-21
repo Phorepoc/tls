@@ -25,6 +25,7 @@
 const TUint KPhSoSessionResumed = 0x50480001;	// (SSL.DLL, tlsconnection_mbed.cpp)
 
 static RFile gLog;
+static TBool gConnStarted = EFalse;
 static RConnection gConn;	// the platform connection (started here: a process that only resolves does not bring a WLAN up)
 
 static void Out(const TDesC8& aLine)
@@ -51,7 +52,7 @@ static TInt Connection(RSocketServ& aSs, const TDesC& aHost, TInt aPort, TInt aI
 	*aResumed = -1;
 	const TUint32 t0 = User::NTickCount();
 	RHostResolver resolver;
-	TInt err = resolver.Open(aSs, KAfInet, KProtocolInetUdp, gConn);
+	TInt err = gConnStarted ? resolver.Open(aSs, KAfInet, KProtocolInetUdp, gConn) : resolver.Open(aSs, KAfInet, KProtocolInetUdp);
 	if (err != KErrNone)
 		return err;
 	TNameEntry entry;
@@ -65,7 +66,7 @@ static TInt Connection(RSocketServ& aSs, const TDesC& aHost, TInt aPort, TInt aI
 	addr.SetPort(aPort);
 
 	RSocket sock;
-	err = sock.Open(aSs, KAfInet, KSockStream, KProtocolInetTcp, gConn);
+	err = gConnStarted ? sock.Open(aSs, KAfInet, KSockStream, KProtocolInetTcp, gConn) : sock.Open(aSs, KAfInet, KSockStream, KProtocolInetTcp);
 	if (err != KErrNone)
 		return err;
 	sock.Connect(addr, st);
@@ -162,7 +163,9 @@ static TInt Run()
 	TInt err = ss.Connect();
 	if (err != KErrNone)
 		return err;
-	if (gConn.Open(ss) == KErrNone)
+	// only with an explicit IAP: otherwise the connection is the platform default (implicit start, or the one a
+	// caller such as wlanjoin already holds)
+	if (iap && gConn.Open(ss) == KErrNone)
 		{
 		TCommDbConnPref pref;
 		pref.SetDialogPreference(ECommDbDialogPrefDoNotPrompt);
@@ -172,6 +175,7 @@ static TInt Run()
 		gConn.Start(pref, cst);
 		User::WaitForRequest(cst);
 		Line("[sslresume] RConnection::Start -> %d", cst.Int());
+		gConnStarted = (cst.Int() == KErrNone);
 		}
 
 	TInt resumed[3] = { -1, -1, -1 };
@@ -187,7 +191,8 @@ static TInt Run()
 			break;
 			}
 		}
-	gConn.Close();
+	if (iap)
+		gConn.Close();
 	ss.Close();
 	if (fail != KErrNone)
 		Line("[sslresume] FAIL connection error %d", fail);
