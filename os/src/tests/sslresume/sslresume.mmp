@@ -1,0 +1,21 @@
+// Copyright The Phorepoc Authors
+// SPDX-License-Identifier: Apache-2.0
+
+// sslresume.exe -- does SSL.DLL resume TLS sessions? (sslresume.cpp)
+#include <platform_paths.hrh>
+
+TARGET			sslresume.exe
+TARGETTYPE		exe
+UID				0x100039ce 0xE5510002
+VENDORID		0
+CAPABILITY		NetworkServices
+EPOCHEAPSIZE	0x10000 0x800000
+
+OS_LAYER_SYSTEMINCLUDE_SYMBIAN
+
+SOURCEPATH		.
+SOURCE			sslresume.cpp
+
+LIBRARY			euser.lib efsrv.lib esock.lib insock.lib securesocket.lib commdb.lib
+
+SMPSAFE

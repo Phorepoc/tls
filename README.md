@@ -29,10 +29,10 @@ mbedTLS and the CA bundle are not copied here: `recipes/` fetches them at pinned
 
 | path | what |
 |---|---|
-| `os/src/ssl/` | `tlsconnection_mbed.cpp`, `ssl_mbed.mmp`: SSL.DLL |
+| `os/src/ssl/` | `tlsconnection_mbed.cpp`, `ssl_mbed.mmp`: SSL.DLL; `tls_sesscache`, `tls_stubcert`, `tls_conf`: its portable, host-tested parts |
 | `os/src/libssl/` | the libssl.dll sources, `libssl_mbed.mmp`, `gen_stubs.py` (the ordinals not implemented get safe stubs) |
 | `os/src/mbedtls/` | our mbedTLS configuration and platform port (entropy) |
-| `os/src/tests/` | `ssltest` (OpenSSL 0.9.8 API smoke test), `sslprobe` (which SSL.DLL a phone's loader picks) |
+| `os/src/tests/` | `hosttls` (host test), `sslresume` (session resumption on a device), `ssltest` (OpenSSL 0.9.8 API smoke test), `sslprobe` (which SSL.DLL a phone's loader picks) |
 | `recipes/` | fetch and build mbedTLS, fetch the CA bundle |
 | `registry/components_tls.py` | the components: `ssl_ph`, `ssl_legacy` (the RAM-loaded phone build), `libssl_ph`, `libssl_mbed`, `ssltest`, `sslprobe`, and the extension of core's `ssl` |
 | `mbedtls.lock`, `cacert.lock` | the pins |
@@ -54,6 +54,43 @@ python3 /pdk/tools/emitter/build_mmp_x32.py ssl libssl_mbed ssltest
 
 `recipes/build_mbedtls.sh --arm` makes the ARM archive; the ARM entries (`ssl_ph`, `ssl_legacy`, `libssl_ph`) compile
 mbedTLS's sources into the DLL instead.
+
+## Behaviour of `SSL.DLL`
+
+- **Session resumption.** A clean TLS 1.2 handshake (session ticket or id) and every TLS 1.3 ticket are remembered per
+  `host:port`, at most 16 sessions, each for the server's ticket lifetime and never more than 24 hours; a TLS 1.3 ticket
+  is used once. The cache lives in memory for the process and in a file in the process's private data
+  (`phtls_sess.dat`, written to a temporary file and renamed over the old one; a damaged file is ignored). Only a
+  session whose certificate verified cleanly against the trust anchors is cached: a certificate the user accepted in
+  the security dialog is asked about again every time. `FlushSessionCache()` empties it.
+- **Trust anchors** are parsed once per process and shared by all connections.
+- **Certificates the platform cannot parse.** `x509.dll` predates today's certificates (ECDSA on newer curves, ...). When
+  it cannot parse the server certificate, `ServerCert()` and the security dialog get a display copy instead of `NULL`:
+  the real subject, issuer, serial number and validity, a placeholder RSA key and signature (`os/src/ssl/tls_stubcert.h`).
+  It is for display only; the real certificate has been verified by mbedTLS.
+- **Switches**, in `\resource\ssl\ssl.ini` on any drive (a copy on `C:` wins over the ROM's), read for each new
+  connection:
+
+  ```
+  tls13 = 0              # at most TLS 1.2, for servers and middleboxes that break 1.3 (default 1)
+  session_cache = 0      # every connection does a full handshake (default 1)
+  session_persist = 0    # keep the session cache in memory only (default 1)
+  ```
+- **ALPN** is not part of Symbian's `MSecureSocket` interface, so there is a Phorepoc option for clients that know about
+  it: `SetOpt(0x50480002, KSolInetSSL, "h2,http/1.1")` before the handshake, `GetOpt(0x50480002, KSolInetSSL, des)`
+  for the selected protocol. `GetOpt(0x50480001, KSolInetSSL, int)` says whether the connection resumed a session.
+
+## Tests
+
+- `os/src/tests/hosttls/run.sh` (host, in the toolchain container, no device or emulator): builds mbedTLS with the DLL's
+  own configuration, runs a real client against a real server in memory, and proves a second connection resumes the
+  first (TLS 1.2 and 1.3, also after the cache went through its file image, and that a refused ticket, other port or
+  host, expired or unverified session never resumes nor breaks the handshake); checks the display certificate and the
+  `ssl.ini` parser. See the header of the script for the `docker run` line.
+- `sslresume` (device or VirtualBox image): three https connections to one host; `[sslresume] PASS` when the second
+  and third resumed (`C:\data\sslresume.txt`). Build with the other components (`build_mmp_x32.py sslresume`), run
+  `sslresume.exe [host [port]]`; run it twice to see the cache survive a process restart, and with `tls13 = 0` in
+  `ssl.ini` to see the TLS 1.2 path.
 
 ## Related projects
 
