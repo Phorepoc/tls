@@ -15,7 +15,10 @@ import os
 from paths import BUILD, OS_ROOT
 
 MBEDTLS_SRC = os.path.join(BUILD, "tls/mbedtls-src")
-MBEDTLS_INC = ["-I", os.path.join(MBEDTLS_SRC, "include"), "-iquote", os.path.join(MBEDTLS_SRC, "library")]
+MBEDTLS_INC = ["-I", os.path.join(MBEDTLS_SRC, "include"), "-iquote", os.path.join(MBEDTLS_SRC, "library"),
+               # no switch lookup tables: GCC addresses one as `table - first case`, and PSA's switches start at large
+               # constants (PSA_ALG_*), so on x32 the address goes below 0 -- R_X86_64_32 out of range at link time
+               "-fno-tree-switch-conversion"]
 MBEDTLS_CFG = "MBEDTLS_CONFIG_FILE=<phorepoc_mbedtls_config.h>"   # (angle brackets: a quoted -D does not survive the shell)
 CA_BUNDLE = "resource\\ssl\\ca-bundle.crt=thirdparty/x86/res/ca-bundle.crt"
 SSL_INI = "resource\\ssl\\ssl.ini=data/ssl.ini"
