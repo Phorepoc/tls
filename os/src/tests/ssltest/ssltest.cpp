@@ -245,7 +245,7 @@ GLDEF_C TInt E32Main()
 		memcpy(port, t.Ptr(), t.Length());
 		port[t.Length()] = 0;
 		}
-	// Open C has no default connection (on a phone, the PinePhone): the rest of the line names the access point
+	// Open C has no default connection (on a phone): the rest of the line names the access point
 	// (setdefaultif), e.g. "example.com 443 Phorepoc WLAN"
 	lex.SkipSpace();
 	t.Set(lex.Remainder());

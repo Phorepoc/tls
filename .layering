@@ -1,0 +1,11 @@
+# What this repository must not name (pdk tools/ci/layering.sh, docs/layering.md): boards, chips, devices, the repositories above it
+pine ?phone
+pine64
+\ba64\b
+allwinner
+sun50i
+virtualbox
+\bvbox
+adaptation-
+\b701\b
+\bmali\b

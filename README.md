@@ -18,7 +18,7 @@ We don't keep copies of mbedTLS or the certificate bundle here. The recipes down
 ## On older Symbian phones
 
 On a phone running Symbian OS 9.x (S60 3rd and 5th Edition, Symbian^3, Anna and Belle), you can drop our `SSL.DLL` in
-to replace the system one. We've tested it on a Nokia 701 with Belle, where the stock browser loads https pages over
+to replace the system one. We've tested it on a Belle phone, where the stock browser loads https pages over
 TLS 1.3. S60 3rd and 5th Edition phones haven't been tested yet.
 
 It needs a phone with platform security hacked, because our `SSL.DLL` has to take the place of the one in ROM. It goes
@@ -76,7 +76,7 @@ resumes the first, over both TLS 1.2 and 1.3, and also after the cache went thro
 session never resumes when it shouldn't, for example for another host, after expiry or when the certificate wasn't
 verified. The `docker run` line is at the top of the script.
 
-`sslresume` runs on a phone or in the VirtualBox image. It makes three https connections to the same server and prints
+`sslresume` runs on a phone or in a VM image. It makes three https connections to the same server and prints
 `[sslresume] PASS` when the second and third resumed. Run it twice to see the cache survive a restart.
 
 ## What's in here

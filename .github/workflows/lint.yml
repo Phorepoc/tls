@@ -26,3 +26,5 @@ jobs:
           missing=$(git ls-files '*.c' '*.cpp' '*.h' '*.hrh' '*.inl' '*.py' '*.sh' '*.mmp' '*.go' '*.S' '*.s' \
                     | while read -r f; do head -c 4000 "$f" | grep -q -i -E 'SPDX-License-Identifier|copyright' || echo "$f"; done)
           if [ -n "$missing" ]; then echo "no licence line:"; echo "$missing"; exit 1; fi
+  layering:
+    uses: Phorepoc/pdk/.github/workflows/layering.yml@main
