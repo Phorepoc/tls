@@ -41,7 +41,7 @@ COMPONENTS = {
                    defs=[MBEDTLS_CFG, "__SOFTFP=", "MBEDTLS_PLATFORM_MS_TIME_ALT"],
                    rom_data=[CA_BUNDLE, SSL_INI],
                    extra=_mbedtls_sources()),
-    # the same drop-in as a RAM-loaded image for a stock Symbian OS 9.x phone (Belle): the stock loader's image
+    # the same drop-in as a RAM-loaded image for a stock Symbian OS 9.x phone (Symbian^3 and its updates): the stock loader's image
     # format and exception model (device=True); trace lines go to C:\data\ssl_trace.txt (a phone has no debug port)
     "ssl_legacy": dict(mmp=os.path.join(OS_ROOT, "src/ssl/ssl_mbed.mmp"), rom="ssl.dll",
                        cdriver=True, allow_wsd=True, device=True,
