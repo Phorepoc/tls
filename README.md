@@ -17,8 +17,8 @@ We don't keep copies of mbedTLS or the certificate bundle here. The recipes down
 
 ## On older Symbian phones
 
-On a phone running Symbian OS 9.x (S60 3rd and 5th Edition, and Symbian^3 and its updates), you can drop our `SSL.DLL` in
-to replace the system one. We've tested it on a Symbian^3 phone with the last update, where the stock browser loads https pages over
+On a phone running Symbian OS 9.x (S60 3rd and 5th Edition, Symbian^3, Anna and Belle), you can drop our `SSL.DLL` in
+to replace the system one. We've tested it on a Belle phone, where the stock browser loads https pages over
 TLS 1.3. S60 3rd and 5th Edition phones haven't been tested yet.
 
 It needs a phone with platform security hacked, because our `SSL.DLL` has to take the place of the one in ROM. It goes
