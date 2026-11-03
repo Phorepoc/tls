@@ -2,12 +2,12 @@
 
 Symbian's own TLS stops at TLS 1.0, so most of today's web refuses to talk to it. This repository replaces it with
 [mbedTLS](https://github.com/Mbed-TLS/mbedtls) 3.6, which brings TLS 1.2 and 1.3 with modern ciphers and certificate
-checks against Mozilla's root certificates. It's built into every [Phorepoc](https://github.com/Phorepoc) image, and
+checks against Mozilla's root certificates. It's built into every [Phorepoc OS](https://github.com/Phorepoc) image, and
 it works on older Symbian phones too.
 
 It replaces two libraries:
 
-- **`SSL.DLL`** sits behind Symbian's `SecureSocket`, which the network stack and the browsers use. It's a drop-in
+- **`SSL.DLL`** sits behind the system's `SecureSocket`, which the network stack and the browsers use. It's a drop-in
   replacement with the same exports as the original.
 - **`libssl.dll`** offers Open C's OpenSSL 0.9.8 interface, which Qt, Java, Internet Radio and other Open C programs
   use, with modern TLS behind it.
@@ -50,7 +50,7 @@ more than 24 hours. They're kept in memory and in a file in the program's privat
 Only sessions whose certificate checked out cleanly are remembered. If you accepted a certificate by hand in the
 security dialog, you'll be asked again every time.
 
-**It shows certificates the old system can't read.** Symbian's certificate parser is older than many of today's
+**It shows certificates the old system can't read.** The system's certificate parser is older than many of today's
 certificates, so on its own it would show the user nothing. When that happens, the security dialog gets a stand-in
 with the real subject, issuer, serial number and dates. It's only for display. mbedTLS has already checked the real
 certificate.
@@ -63,7 +63,7 @@ session_cache = 0      # always do a full handshake (default 1)
 session_persist = 0    # keep sessions in memory only, not in a file (default 1)
 ```
 
-**It supports ALPN for apps that ask.** Symbian's secure socket interface has no way to choose a protocol such as
+**It supports ALPN for apps that ask.** The system's secure socket interface has no way to choose a protocol such as
 HTTP/2, so we added one. Call `SetOpt(0x50480002, KSolInetSSL, "h2,http/1.1")` before the handshake and
 `GetOpt(0x50480002, KSolInetSSL, des)` afterwards to see which was picked. `GetOpt(0x50480001, KSolInetSSL, int)`
 tells you whether the connection resumed a session.
@@ -84,7 +84,7 @@ verified. The `docker run` line is at the top of the script.
 - `os/src/ssl/` is `SSL.DLL`. The session cache, the stand-in certificate and the settings parser are split out so
   they can be tested on a computer.
 - `os/src/libssl/` is `libssl.dll`.
-- `os/src/mbedtls/` has our mbedTLS configuration and its source of randomness on Symbian.
+- `os/src/mbedtls/` has our mbedTLS configuration and its source of randomness on Phorepoc OS.
 - `os/src/tests/` has the tests above, plus `ssltest` for the OpenSSL interface and `sslprobe`, which shows which
   `SSL.DLL` a phone actually loads.
 - `recipes/` downloads and builds mbedTLS and downloads the certificates. `build.sh` runs them all.
