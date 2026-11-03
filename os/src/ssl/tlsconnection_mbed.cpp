@@ -1239,7 +1239,7 @@ void CTlsConnection::Progress()
 			needRecv = rc == MBEDTLS_ERR_SSL_WANT_READ;
 		else
 			{
-			TLSLOG("[ssl] handshake failed: -0x%04x", -rc);
+			RDebug::Printf("PH: [ssl] %08x handshake failed: -0x%04x (resumed offer %d)", this, (TUint)-rc, iSessionOffered ? 1 : 0);
 			ForgetSession();
 			Flush();					// the alert, if any
 			FailAll(MapErr(rc));
@@ -1259,6 +1259,7 @@ void CTlsConnection::Progress()
 				break;
 			else
 				{
+				RDebug::Printf("PH: [ssl] %08x write failed: -0x%04x", this, (TUint)-rc);
 				FailAll(MapErr(rc));
 				return;
 				}
@@ -1311,6 +1312,7 @@ void CTlsConnection::Progress()
 			else
 				{
 				TLSLOG("[ssl] %08x read error -0x%04x", this, -rc);
+				RDebug::Printf("PH: [ssl] %08x read failed: -0x%04x", this, (TUint)-rc);
 				FailAll(MapErr(rc));
 				return;
 				}
@@ -1591,6 +1593,7 @@ TInt CTlsConnection::SetOpt(TUint aOptionName, TUint aOptionLevel, const TDesC8&
 	case KSoSSLDomainName:
 		{
 		iHost.Copy(aOption.Left(255));
+		iHost.LowerCase();			// DNS names are case-insensitive: one spelling for the SNI, the name check and the session cache
 		TBuf8<256> host(iHost);
 		return mbedtls_ssl_set_hostname(&iSsl, (const char*)host.PtrZ()) == 0 ? KErrNone : KErrArgument;
 		}
