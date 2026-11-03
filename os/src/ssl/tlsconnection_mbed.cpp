@@ -134,6 +134,43 @@ static void SpinUnlock(TInt& aLock)
 	User::LockedDec(aLock);
 	}
 
+// PSA crypto (TLS 1.3 and, with MBEDTLS_USE_PSA_CRYPTO, the signature / AEAD work of every handshake) keeps its state
+// in process-wide globals -- the init flag, the key-slot table -- and this mbedTLS is built without MBEDTLS_THREADING_C.
+// Two threads in this process each with a TLS connection (a program that fetches on worker threads: Catalogue's index
+// refresh and icon downloads) corrupted that state: psa_crypto_init() raced, then a handshake died with
+// MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED (-0x006E) and a thread faulted in the library. Every call that can reach PSA
+// runs under one process-wide lock; it is taken again by the thread that holds it (a certificate callback runs inside a
+// handshake), and nothing in it waits for the network or the user (the connection's I/O is in-memory, a handshake step
+// returns WANT_READ).
+static TInt gPsaLock;
+static TUint64 gPsaOwner;
+static TInt gPsaDepth;
+
+class TPsaGuard
+	{
+public:
+	TPsaGuard()
+		{
+		TUint64 me = RThread().Id().Id();
+		if (gPsaDepth > 0 && gPsaOwner == me)
+			{
+			++gPsaDepth;
+			return;
+			}
+		SpinLock(gPsaLock);
+		gPsaOwner = me;
+		gPsaDepth = 1;
+		}
+	~TPsaGuard()
+		{
+		if (--gPsaDepth == 0)
+			{
+			gPsaOwner = 0;
+			SpinUnlock(gPsaLock);
+			}
+		}
+	};
+
 // The runtime switches (ssl.ini, see tls_conf.h): re-read for every connection, so a change applies to the next one.
 static void ReadSettings(phtls_conf& aConf)
 	{
@@ -158,6 +195,35 @@ static void ReadSettings(phtls_conf& aConf)
 		}
 	fs.Close();
 	}
+
+// A thread's own heap dies with the thread. The trust anchors and the session cache outlive any connection (pinned for
+// the life of the process), and are made by -- and freed on -- whichever thread happens to need them: a program that
+// fetches on short-lived worker threads (Catalogue's index refresh and icon downloads, one thread each) kept pointers
+// into the heap of a thread that had ended, and the next connection's ReleaseTrustAnchors() faulted in
+// mbedtls_pk_free. Everything these two structures allocate or free is done with the calling thread switched to one
+// process-wide heap (multi-thread safe, created on first use, never closed). A scope never contains a Leave.
+static RHeap* gSharedHeap;
+static TInt gSharedHeapLock;
+
+class TSharedHeap
+	{
+public:
+	TSharedHeap()
+		{
+		SpinLock(gSharedHeapLock);
+		if (!gSharedHeap)
+			gSharedHeap = UserHeap::ChunkHeap(NULL, 0x8000, 0x800000, 0x4000);	// (NULL on failure: the thread's own heap then)
+		SpinUnlock(gSharedHeapLock);
+		iOld = gSharedHeap ? User::SwitchHeap(gSharedHeap) : NULL;
+		}
+	~TSharedHeap()
+		{
+		if (iOld)
+			User::SwitchHeap(iOld);
+		}
+private:
+	RHeap* iOld;
+	};
 
 // The trust anchors, parsed once per process and shared (read-only) by every connection. The chain stays alive while
 // any connection uses it and, pinned, for the life of the process (the next connection must not parse ~140
@@ -188,11 +254,19 @@ static mbedtls_x509_crt* ParseTrustAnchorsL()
 	CleanupClosePushL(pem);
 	User::LeaveIfError(f.Read(pem));
 	pem.Append(TChar(0));
-	mbedtls_x509_crt* crt = static_cast<mbedtls_x509_crt*>(calloc(1, sizeof(mbedtls_x509_crt)));
+	mbedtls_x509_crt* crt;
+	int rc = 0;
+		{
+		TSharedHeap shared;			// (the chain is allocated on the process-wide heap)
+		crt = static_cast<mbedtls_x509_crt*>(calloc(1, sizeof(mbedtls_x509_crt)));
+		if (crt)
+			{
+			mbedtls_x509_crt_init(crt);
+			rc = mbedtls_x509_crt_parse(crt, pem.Ptr(), (size_t)pem.Length());
+			}
+		}
 	if (crt)
 		{
-		mbedtls_x509_crt_init(crt);
-		int rc = mbedtls_x509_crt_parse(crt, pem.Ptr(), (size_t)pem.Length());
 #ifdef PHOREPOC_SSL_TRACE
 		TInt n = 0;
 		for (const mbedtls_x509_crt* c = crt; c && c->raw.p; c = c->next)
@@ -206,7 +280,11 @@ static mbedtls_x509_crt* ParseTrustAnchorsL()
 		User::Leave(KErrNoMemory);
 	if (!crt->raw.p)
 		{
-		free(crt);
+			{
+			TSharedHeap shared;
+			mbedtls_x509_crt_free(crt);
+			free(crt);
+			}
 		User::Leave(KErrNotFound);
 		}
 	return crt;
@@ -216,6 +294,7 @@ static void FreeChain(mbedtls_x509_crt* aCrt)
 	{
 	if (aCrt)
 		{
+		TSharedHeap shared;			// (allocated on the process-wide heap, freed there)
 		mbedtls_x509_crt_free(aCrt);
 		free(aCrt);
 		}
@@ -327,7 +406,7 @@ static void SessionsLoadOnce(TBool aPersist)
 			if (f.Read(img) == KErrNone)
 				{
 				SpinLock(gSessLock);
-				phsc_deserialize(&gSess, img.Ptr(), (size_t)img.Length(), NowSeconds());
+				{ TSharedHeap shared; phsc_deserialize(&gSess, img.Ptr(), (size_t)img.Length(), NowSeconds()); }
 				SpinUnlock(gSessLock);
 				}
 			img.Close();
@@ -593,7 +672,7 @@ void CTlsConnection::FlushSessionCache()
 	{
 	TLSLOG("[ssl] FlushSessionCache");
 	SpinLock(gSessLock);
-	phsc_clear(&gSess);
+	{ TSharedHeap shared; phsc_clear(&gSess); }
 	SpinUnlock(gSessLock);
 	if (iSettings.session_persist)
 		SessionsSave();			// (an empty cache removes the file)
@@ -622,7 +701,12 @@ void CTlsConnection::ConstructL()
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
 	// TLS 1.3 runs on PSA crypto: its global state is set up once per process (repeat calls return at once)
 	TLSLOG("[ssl] %08x psa init", this);
-	if (psa_crypto_init() != PSA_SUCCESS)
+	psa_status_t psaInit;
+		{
+		TPsaGuard psa;				// (no Leave inside a guard: a Leave does not run destructors)
+		psaInit = psa_crypto_init();
+		}
+	if (psaInit != PSA_SUCCESS)
 		User::Leave(KErrGeneral);
 #endif
 	static const char KPers[] = "phorepoc-ssl.dll";
@@ -656,7 +740,12 @@ void CTlsConnection::ConstructL()
 	// OPTIONAL: a certificate that fails verification ends the handshake here, not in mbedTLS -- attended mode then
 	// asks the user as the 2010 TLS provider does (Progress), unattended mode refuses it
 	mbedtls_ssl_conf_authmode(&iConf, MBEDTLS_SSL_VERIFY_OPTIONAL);
-	if (mbedtls_ssl_setup(&iSsl, &iConf))
+	int setupRc;
+		{
+		TPsaGuard psa;
+		setupRc = mbedtls_ssl_setup(&iSsl, &iConf);
+		}
+	if (setupRc)
 		User::Leave(KErrNoMemory);
 	mbedtls_ssl_set_bio(&iSsl, this, &CTlsConnection::BioSend, &CTlsConnection::BioRecv, NULL);
 	TLSLOG("[ssl] %08x constructed", this);
@@ -672,7 +761,10 @@ CTlsConnection::~CTlsConnection()
 	delete iUiCertDer;
 	delete iResumedCert;
 	mbedtls_x509_crt_free(&iResumedCrt);
-	mbedtls_ssl_free(&iSsl);
+		{
+		TPsaGuard psa;				// (frees the PSA keys of a TLS 1.3 connection)
+		mbedtls_ssl_free(&iSsl);
+		}
 	mbedtls_ssl_config_free(&iConf);
 	mbedtls_ctr_drbg_free(&iDrbg);
 	mbedtls_entropy_free(&iEntropy);
@@ -828,7 +920,7 @@ void CTlsConnection::StartDialogL(uint32_t aFlags, const TDesC8& aCert)
 
 void CTlsConnection::RefusePeerCert(TInt aErr)
 	{
-	mbedtls_ssl_send_alert_message(&iSsl, MBEDTLS_SSL_ALERT_LEVEL_FATAL, MBEDTLS_SSL_ALERT_MSG_BAD_CERT);
+	{ TPsaGuard psa; mbedtls_ssl_send_alert_message(&iSsl, MBEDTLS_SSL_ALERT_LEVEL_FATAL, MBEDTLS_SSL_ALERT_MSG_BAD_CERT); }
 	Flush();
 	FailAll(aErr);
 	}
@@ -883,8 +975,21 @@ void CTlsConnection::TryResume()
 	size_t len = 0;
 	unsigned char flags = 0;
 	SpinLock(gSessLock);
-	unsigned char* blob = phsc_take(&gSess, name, port, NowSeconds(), &len, &flags);
+	unsigned char* shared8;
+		{
+		TSharedHeap shared;
+		shared8 = phsc_take(&gSess, name, port, NowSeconds(), &len, &flags);	// (a copy on the shared heap)
+		}
 	SpinUnlock(gSessLock);
+	if (!shared8)
+		return;
+	unsigned char* blob = static_cast<unsigned char*>(malloc(len));		// ... handed on as one of this thread's own
+	if (blob)
+		Mem::Copy(blob, shared8, (TInt)len);
+		{
+		TSharedHeap shared;
+		free(shared8);
+		}
 	if (!blob)
 		return;
 	unsigned char* cert = NULL;
@@ -903,7 +1008,7 @@ void CTlsConnection::TryResume()
 		{
 		// damaged or from another mbedTLS: do not offer it again
 		SpinLock(gSessLock);
-		phsc_remove(&gSess, name, port);
+		{ TSharedHeap shared; phsc_remove(&gSess, name, port); }
 		SpinUnlock(gSessLock);
 		}
 	free(blob);
@@ -940,7 +1045,7 @@ void CTlsConnection::CacheSession()
 		return;
 	TBuf8<256> host(iHost);
 	SpinLock(gSessLock);
-	phsc_put(&gSess, (const char*)host.PtrZ(), SessionPort(), blob, len, flags, NowSeconds(), lifetime);
+	{ TSharedHeap shared; phsc_put(&gSess, (const char*)host.PtrZ(), SessionPort(), blob, len, flags, NowSeconds(), lifetime); }
 	SpinUnlock(gSessLock);
 	free(blob);
 	if (iSettings.session_persist)
@@ -956,7 +1061,7 @@ void CTlsConnection::ForgetSession()
 	iSessionOffered = EFalse;
 	TBuf8<256> host(iHost);
 	SpinLock(gSessLock);
-	phsc_remove(&gSess, (const char*)host.PtrZ(), SessionPort());
+	{ TSharedHeap shared; phsc_remove(&gSess, (const char*)host.PtrZ(), SessionPort()); }
 	SpinUnlock(gSessLock);
 	}
 
@@ -1094,7 +1199,8 @@ void CTlsConnection::Progress()
 
 	if (iHandshake && !iConnected && !iVerifyPending)
 		{
-		int rc = mbedtls_ssl_handshake(&iSsl);
+		int rc;
+		{ TPsaGuard psa; rc = mbedtls_ssl_handshake(&iSsl); }
 		const TBool resumed = iSessionOffered && !iFullVerify;		// (nothing to verify: the session was verified when it was made)
 		const uint32_t flags = (rc == 0 && !resumed) ? mbedtls_ssl_get_verify_result(&iSsl) : 0;
 		if (rc == 0 && flags && !PeerCertAccepted(EFalse))
@@ -1145,7 +1251,8 @@ void CTlsConnection::Progress()
 		{
 		while (iWriteDone < iWriteData.Length())
 			{
-			int rc = mbedtls_ssl_write(&iSsl, iWriteData.Ptr() + iWriteDone, (size_t)(iWriteData.Length() - iWriteDone));
+			int rc;
+			{ TPsaGuard psa; rc = mbedtls_ssl_write(&iSsl, iWriteData.Ptr() + iWriteDone, (size_t)(iWriteData.Length() - iWriteDone)); }
 			if (rc > 0)
 				iWriteDone += rc;
 			else if (rc == MBEDTLS_ERR_SSL_WANT_READ || rc == MBEDTLS_ERR_SSL_WANT_WRITE)
@@ -1168,7 +1275,8 @@ void CTlsConnection::Progress()
 			TInt room = iReadDes->MaxLength() - iReadDes->Length();
 			if (room == 0)
 				break;
-			int rc = mbedtls_ssl_read(&iSsl, const_cast<TUint8*>(iReadDes->Ptr()) + iReadDes->Length(), (size_t)room);
+			int rc;
+			{ TPsaGuard psa; rc = mbedtls_ssl_read(&iSsl, const_cast<TUint8*>(iReadDes->Ptr()) + iReadDes->Length(), (size_t)room); }
 			if (rc > 0)
 				{
 				iReadDes->SetLength(iReadDes->Length() + rc);
@@ -1361,7 +1469,7 @@ void CTlsConnection::Close()
 	iReceiver->Cancel();
 	if (iConnected && !iFatal)
 		{
-		mbedtls_ssl_close_notify(&iSsl);
+		{ TPsaGuard psa; mbedtls_ssl_close_notify(&iSsl); }
 		if (iOut.Length())
 			{
 			TRequestStatus s;
