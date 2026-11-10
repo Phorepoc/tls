@@ -47,6 +47,11 @@
 #define MBEDTLS_SSL_TLS1_3_COMPATIBILITY_MODE  /* the fake ChangeCipherSpec middleboxes expect */
 #define MBEDTLS_PSA_CRYPTO_C
 #define MBEDTLS_USE_PSA_CRYPTO
+/* Every TLS key (ECDHE share, traffic keys, HMAC) sits in a PSA key slot. Without this the store is a static array of
+ * MBEDTLS_PSA_KEY_SLOT_COUNT (32) slots for the whole process: a browser page's ten parallel handshakes ran out of slots
+ * and failed with -0x7F00 "Memory allocation failed" (PSA_ERROR_INSUFFICIENT_MEMORY). Dynamic = the slices grow on the
+ * heap as connections need them (mbedTLS 3.6's own default). */
+#define MBEDTLS_PSA_KEY_STORE_DYNAMIC
 #define MBEDTLS_HKDF_C
 
 /* --- ciphers, hashes, public key --- */
