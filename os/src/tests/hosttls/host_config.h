@@ -1,5 +1,5 @@
 /* Copyright The Phorepoc Authors
- * SPDX-License-Identifier: Apache-2.0 */
+ * SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Phorepoc-Build-Output-Exception-1.0 */
 /* host_config.h -- the host test's mbedTLS: exactly the ssl.dll configuration, plus the server side the test needs as
  * its peer (a TLS server with session tickets). */
 #ifndef PHOREPOC_HOST_CONFIG_H

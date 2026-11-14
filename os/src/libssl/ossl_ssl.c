@@ -1,5 +1,5 @@
 /* Copyright The Phorepoc Authors
- * SPDX-License-Identifier: Apache-2.0 */
+ * SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Phorepoc-Build-Output-Exception-1.0 */
 
 /* ossl_ssl.c -- a drop-in libssl.dll for Open C's OpenSSL 0.9.8g ABI, with TLS 1.2/1.3 from mbedTLS 3.6.
  *

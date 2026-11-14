@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright The Phorepoc Authors
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 #
 # fetch_mbedtls.sh -- the pinned mbedTLS release tarball (mbedtls.lock, SHA-256 checked) unpacked into
 # $PHOREPOC_BUILD/tls/mbedtls-src. The release tarball is self-contained (the git tag needs a submodule).

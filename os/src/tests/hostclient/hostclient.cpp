@@ -1,5 +1,5 @@
 // Copyright The Phorepoc Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Phorepoc-Build-Output-Exception-1.0
 
 // hostclient.cpp -- a host HTTPS GET client configured as SSL.DLL / curl's mbedTLS front end configures its client
 // (TLS 1.2..1.3, the library's default suite / group / signature lists, SNI, no ALPN unless asked), for grading the

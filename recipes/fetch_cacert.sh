@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright The Phorepoc Authors
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 #
 # fetch_cacert.sh -- Mozilla's CA bundle as published by curl (cacert.lock, SHA-256 checked) -> the file the
 # registry stages into the ROM as \resource\ssl\ca-bundle.crt: $PHOREPOC_BUILD/thirdparty/x86/res/ca-bundle.crt.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright The Phorepoc Authors
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 #
 # build_mbedtls.sh [--arm] -- mbedTLS (fetch_mbedtls.sh first) as one static archive for Open C / P.I.P.S.
 #

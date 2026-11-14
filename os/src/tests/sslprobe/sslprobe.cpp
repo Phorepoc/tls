@@ -1,5 +1,5 @@
 // Copyright The Phorepoc Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Phorepoc-Build-Output-Exception-1.0
 
 // sslprobe.cpp -- ask the phone's loader for SSL.DLL the way securesocket.dll does (by name, no
 // version) and record which file it picked, or the error. Separates "the loader refuses our eclipsing copy"

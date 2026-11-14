@@ -1,5 +1,5 @@
 // Copyright The Phorepoc Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Phorepoc-Build-Output-Exception-1.0
 
 // sslresume.exe -- on-device proof that SSL.DLL resumes TLS sessions. It makes three https connections to one host
 // through the platform's CSecureSocket (so through whichever SSL.DLL the loader picks), and asks each connection

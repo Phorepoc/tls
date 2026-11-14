@@ -1,5 +1,5 @@
 // Copyright The Phorepoc Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Phorepoc-Build-Output-Exception-1.0
 
 // entropy_symbian.cpp -- mbedTLS's entropy source on Symbian
 // (MBEDTLS_ENTROPY_HARDWARE_ALT in phorepoc_mbedtls_config.h). euser's Math::Random(TDes8&) = the kernel's random

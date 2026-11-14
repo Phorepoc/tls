@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright The Phorepoc Authors
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Phorepoc-Build-Output-Exception-1.0
 #
 # run.sh <host> <port> <path> [alpn] [notls13] -- build hostclient.cpp against the ssl.dll's own mbedTLS configuration
 # (TLS=/tls; MBEDTLS_CFG_DIR overrides the directory holding phorepoc_mbedtls_config.h) in the toolchain container

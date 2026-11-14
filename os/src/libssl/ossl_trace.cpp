@@ -1,5 +1,5 @@
 // Copyright The Phorepoc Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Phorepoc-Build-Output-Exception-1.0
 
 // ossl_trace.cpp -- the libssl.dll drop-in's trace line (C side: ossl_trace() in ossl_ssl.c).
 // PHOREPOC_LIBSSL_TRACE: one RDebug line per handshake result / failure, prefixed "[libssl]".

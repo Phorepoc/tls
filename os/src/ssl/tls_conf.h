@@ -1,5 +1,5 @@
 // Copyright The Phorepoc Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Phorepoc-Build-Output-Exception-1.0
 
 // tls_conf.h -- SSL.DLL's runtime switches, read from a tiny text file (\resource\ssl\ssl.ini on any drive; a copy on
 // C: wins over the ROM's, so a user or an image builder can change them without rebuilding anything):

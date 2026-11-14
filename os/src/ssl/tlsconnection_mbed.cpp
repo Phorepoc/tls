@@ -1,5 +1,5 @@
 // Copyright The Phorepoc Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Phorepoc-Build-Output-Exception-1.0
 
 // tlsconnection_mbed.cpp -- the modern-TLS SSL.DLL drop-in on the REAL Symbian ABI.
 //

@@ -1,5 +1,5 @@
 // Copyright The Phorepoc Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Phorepoc-Build-Output-Exception-1.0
 
 // hosttls.cpp -- host test of SSL.DLL's portable parts, built with the ssl.dll's own mbedTLS configuration
 // (host_config.h) and the very sources the DLL compiles: tls_sesscache.cpp, tls_stubcert.cpp, tls_conf.cpp.

@@ -3,7 +3,7 @@ Copyright The Phorepoc Authors (see AUTHORS)
 
 Phorepoc was founded by Kyriakos Bompotis.
 
-Licensed under the Apache License 2.0 (LICENSE).
+Phorepoc code licensed under the GNU Affero General Public License, version 3 only (AGPL-3.0-only, LICENSE), with the additional terms in ADDITIONAL-TERMS.md (section 7(b) attributions, section 7(e) names and logos), and the Phorepoc Build Output Exception (LICENSES/Phorepoc-Build-Output-Exception-1.0.txt) as described below.
 
 Not part of this repository, fetched at build time (recipes/fetch_mbedtls.sh, recipes/fetch_cacert.sh):
 
@@ -19,3 +19,16 @@ against but not copied here; their authors' licences apply to them.
 
 Thanks to the mbedTLS project for the engine, to the curl project for keeping the CA bundle current, and to the
 Symbian Foundation for releasing the platform.
+
+Licensing. The Phorepoc code is AGPL-3.0-only with additional terms under its section 7 (ADDITIONAL-TERMS.md):
+the attribution "Phorepoc, founded by Kyriakos Bompotis" and these notices must be kept, also where a work based on
+it shows legal notices; no rights are granted to the Phorepoc names and logos (TRADEMARKS.md). It is dual-licensed:
+commercial licences are available from the founder (see README.md, "Licensing"). Third-party code keeps its own
+licence and header.
+
+Phorepoc Build Output Exception (LICENSES/Phorepoc-Build-Output-Exception-1.0.txt) applies to the Tools:
+  the build scripts (build.sh, recipes/)
+and to this Runtime Material:
+  os/src/ (libssl.dll, ssl.dll and their headers and import definitions)
+  os/data/ssl.ini
+What you build with the Tools, including the Runtime Material in it, is not covered by the AGPL.

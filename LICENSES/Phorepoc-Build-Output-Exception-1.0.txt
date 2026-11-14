@@ -1,0 +1,48 @@
+Phorepoc Build Output Exception, version 1.0
+
+Copyright The Phorepoc Authors. Phorepoc was founded by Kyriakos Bompotis.
+
+This exception is an additional permission under section 7 of the GNU Affero General Public License, version 3
+("AGPLv3"). It is modelled on the purpose of the GCC Runtime Library Exception, version 3.1: the tools stay free
+software, and what you build with them is yours.
+
+0. Definitions.
+
+"The Tools" are the programs of this repository that are licensed under the AGPLv3 and whose NOTICE file says that
+this exception applies to them: compilers' drivers, linkers, converters, packagers, generators and the like.
+
+"Runtime Material" is the files of this repository that the NOTICE file lists as runtime material: code, headers,
+linker scripts and data that the Tools (or a build that follows this repository's instructions) compile into, link
+into, include in or copy into the files they produce.
+
+"Your Input" is any source code, object code, resource or data that is not itself the Tools or Runtime Material, and
+that you give to the Tools to process.
+
+"Build Output" is any file the Tools produce from Your Input, by compiling, linking, converting, generating,
+compressing or packaging, including any Runtime Material (modified or not) that ends up in it, and any library or
+executable that is linked at run time against Runtime Material distributed as a separate library.
+
+1. Grant of additional permission.
+
+You have permission to create Build Output and to use, copy, modify, distribute, convey and offer it over a network
+under terms of your choice, consistent with the licensing of Your Input, notwithstanding that it may contain or link
+to Runtime Material, and notwithstanding that it was made with the Tools. The AGPLv3 does not apply to Build Output
+by reason of the Tools or the Runtime Material, and section 13 of the AGPLv3 does not reach it.
+
+2. What stays under the AGPLv3.
+
+This exception does not change the licence of the Tools or of the Runtime Material themselves. If you convey the
+Tools or the Runtime Material, modified or not, as such (in source or object form, or as a library meant to be
+reused by others), the AGPLv3 and its additional terms apply, including section 13 when users interact with a
+modified version of the Tools over a network. A copy of Runtime Material inside Build Output is covered by section 1;
+the source file it came from is not.
+
+3. No other change.
+
+Apart from this permission, the AGPLv3 and the additional terms of this repository (ADDITIONAL-TERMS.md) apply
+unchanged.
+
+4. Removing the exception.
+
+If you modify the Tools or the Runtime Material, you may extend this exception to your version, but you are not
+obliged to. If you do not wish to, delete this exception and its mention in the NOTICE file from your version.

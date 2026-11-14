@@ -1,5 +1,5 @@
 /* Copyright The Phorepoc Authors
- * SPDX-License-Identifier: Apache-2.0 */
+ * SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Phorepoc-Build-Output-Exception-1.0 */
 
 /* phorepoc_mbedtls_config.h -- mbedTLS 3.6 for the ssl.dll and libssl.dll front ends
  * and for curl's mbedTLS backend, on Open C / P.I.P.S.. The algorithm set: TLS 1.2 and 1.3 client, ECDHE, AES-GCM,

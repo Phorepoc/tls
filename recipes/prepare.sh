@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright The Phorepoc Authors
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 
 # recipes/prepare.sh -- run by the build before the components (pdk docs/layering.md), on the host: mbedTLS and the CA
 # bundle at their pinned versions; for x32 mbedTLS is also built here (the ARM builds compile it as components).

@@ -1,5 +1,5 @@
 // Copyright The Phorepoc Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Phorepoc-Build-Output-Exception-1.0
 
 // ssltest.cpp -- drives Open C's OpenSSL 0.9.8 API the way its real users do (javassl: a socket fd;
 // Qt: SSL_CTX_new(SSLv23_client_method()) + SNI + SSL_get_peer_certificate), against the mbedTLS libssl.dll drop-in

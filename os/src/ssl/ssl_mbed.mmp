@@ -1,5 +1,5 @@
 // Copyright The Phorepoc Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Phorepoc-Build-Output-Exception-1.0
 
 // ssl_mbed.mmp -- the modern-TLS SSL.DLL drop-in (tlsconnection_mbed.cpp) in place of the
 // 2010 networksecurity/tls/group/SSL.MMP. Same name, UIDs, capabilities and frozen exports (the registry points

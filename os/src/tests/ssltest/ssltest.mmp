@@ -1,5 +1,5 @@
 // Copyright The Phorepoc Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Phorepoc-Build-Output-Exception-1.0
 
 // ssltest.mmp -- the OpenSSL 0.9.8 API smoke test for the mbedTLS libssl.dll drop-in (ssltest.cpp)
 TARGET			ssltest.exe

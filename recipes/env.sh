@@ -1,5 +1,5 @@
 # Copyright The Phorepoc Authors
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 #
 # Sourced by the recipes. Runs inside the toolchain container (ghcr.io/phorepoc/base), like the pdk's build tools:
 #   PHOREPOC_PDK     the pdk checkout (tools/openc_cflags.py)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright The Phorepoc Authors
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 #
 # build.sh -- fetch and build everything the registry entries need: mbedTLS (x32 archive), the CA bundle.
 # Inside the toolchain container, with PHOREPOC_PDK / PHOREPOC_CORE / PHOREPOC_BUILD set (see README.md).
