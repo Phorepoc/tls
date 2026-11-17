@@ -30,7 +30,7 @@ LIBSSL_DEF = "oss.FCL.sf.os.ossrv/ssl/libssl/eabi/libsslu.def"
 # build_openssl.sh [--arm]; static libssl.a + libcrypto.a, no mbedTLS in the DLL); see "the engine switch" at the end.
 # The OpenSSL 3 headers precede Open C's own <openssl/...> (the 0.9.8 API) through `incs_first`.
 ENGINE = os.environ.get("ENGINE", "openssl").lower()
-OPENSSL_INC = os.path.join(BUILD, "thirdparty/{arch}/include/openssl3")
+OPENSSL_INC = os.path.join(BUILD, "thirdparty/include/openssl3")   # one dir for both architectures (both are 32-bit little-endian: the generated headers are the same)
 OPENSSL_MMP = os.path.join(OS_ROOT, "src/ssl/ssl_openssl.mmp")
 
 
@@ -111,9 +111,10 @@ EXTEND = {} if os.environ.get("SSL_2010") else {
 # The ARM entries link the ARM archives, core's `ssl` the x32 ones (the OpenSSL 3 headers precede Open C's own
 # <openssl/...>, the 0.9.8 API, through incs_first).
 if ENGINE == "openssl":
+    # ssl_ph is an ARM component, but the bulk build of an x32 board compiles it too: it links the x32 archives there
     _a = _openssl("arm")
     COMPONENTS["ssl_ph"].update(mmp=_a["mmp"], incs_first=_a["incs_first"], arm_incs_first=True, flags=[], extra=[],
-                                arm_archives=_a["arm_archives"],
+                                arm_archives=_a["arm_archives"], x32_archives=_openssl("x86")["x32_archives"],
                                 defs=["__SOFTFP="])
     if "ssl" in EXTEND:
         _x = _openssl("x86")

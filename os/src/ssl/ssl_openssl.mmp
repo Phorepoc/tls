@@ -23,7 +23,7 @@ MACRO			PHSC_NO_MBEDTLS
 
 OS_LAYER_SYSTEMINCLUDE_SYMBIAN
 OS_LAYER_LIBC_SYSTEMINCLUDE
-// the OpenSSL 3 include dir (thirdparty/<arch>/include/openssl3) comes from the registry entries' flags: it has to
+// the OpenSSL 3 include dir (thirdparty/include/openssl3) comes from the registry entries' flags: it has to
 // precede stdapis/openssl, which is the 0.9.8 API
 USERINCLUDE		../openssl
 

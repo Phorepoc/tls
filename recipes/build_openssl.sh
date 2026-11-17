@@ -9,8 +9,8 @@
 # wrapper that adds the Open C client line from the pdk (tools/openc_cflags.py), the same one build_mbedtls.sh uses.
 #   x32 (default):  gcc / ar            -> $PHOREPOC_BUILD/thirdparty/x86/lib/{libcrypto,libssl}.a
 #   --arm:          arm-none-eabi-gcc   -> $PHOREPOC_BUILD/thirdparty/arm/lib/{libcrypto,libssl}.a
-# and the public headers (with the generated ones) in $PHOREPOC_BUILD/thirdparty/<arch>/include/openssl3/openssl/
-# (a separate directory: Open C's own stdapis/openssl headers are the 0.9.8 API and must not be picked up).
+# and the public headers (with the generated ones) in $PHOREPOC_BUILD/thirdparty/include/openssl3/openssl/ (one place for both architectures,
+# a separate directory: Open C's own stdapis/openssl headers are the 0.9.8 API and must not be picked up))
 # Entropy is not from the OS: the engine registers a seed source on the kernel RNG (os/src/openssl/seed_symbian.cpp).
 # JOBS=n sets the parallelism (default: all cores).
 . "$(dirname "${BASH_SOURCE[0]}")/env.sh"
@@ -37,7 +37,7 @@ XF+=(-Wno-attributes -fmax-errors=5 -DOPENSSL_NO_SECURE_MEMORY -DNO_SYSLOG -D__S
 
 OUT=$PHOREPOC_BUILD/thirdparty/$ARCH
 B=$TLS_BUILD/openssl-$ARCH
-rm -rf "$B"; mkdir -p "$B" "$OUT/lib" "$OUT/include/openssl3"
+rm -rf "$B"; mkdir -p "$B" "$OUT/lib"; INC3=$PHOREPOC_BUILD/thirdparty/include/openssl3; mkdir -p "$INC3"
 printf '%s\n' "${XF[@]}" > "$B/.flags"
 # the compiler wrapper: the flags file holds one flag per line (some contain spaces: -Dwchar_t=unsigned short)
 cat > "$B/cc.sh" <<WRAP
@@ -56,6 +56,6 @@ make -k -j "$JOBS" build_libs AR="$AR" ARFLAGS=r RANLIB=true > "$B/make.log" 2>&
 rc=$?
 if [ $rc -ne 0 ]; then grep -E "error" "$B/make.log" | sort | uniq -c | sort -rn | head -25; tail -3 "$B/make.log"; exit 1; fi
 cp libcrypto.a libssl.a "$OUT/lib/"
-rm -rf "$OUT/include/openssl3/openssl"; mkdir -p "$OUT/include/openssl3/openssl"
-cp "$SRC"/include/openssl/*.h include/openssl/*.h "$OUT/include/openssl3/openssl/"
+rm -rf "$INC3/openssl"; mkdir -p "$INC3/openssl"
+cp "$SRC"/include/openssl/*.h include/openssl/*.h "$INC3/openssl/"
 echo "libcrypto/libssl: $OUT/lib ($(du -k "$OUT/lib/libcrypto.a" | cut -f1) KB + $(du -k "$OUT/lib/libssl.a" | cut -f1) KB)"

@@ -46,7 +46,7 @@
 #include <genericsecuresocket.h>
 #include <secdlg.h>
 
-// OpenSSL 3 headers (thirdparty/<arch>/include/openssl3, ahead of Open C's 0.9.8 <openssl/...>)
+// OpenSSL 3 headers (thirdparty/include/openssl3, ahead of Open C's 0.9.8 <openssl/...>)
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/x509.h>
