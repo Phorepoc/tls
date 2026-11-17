@@ -58,13 +58,16 @@ COMPONENTS = {
                    rom_data=[CA_BUNDLE, SSL_INI],
                    extra=_mbedtls_sources()),
     # the same drop-in as a RAM-loaded image for a stock Symbian OS 9.x phone (Belle): the stock loader's image
-    # format and exception model (device=True); trace lines go to C:\data\ssl_trace.txt (a phone has no debug port)
+    # format and exception model (device=True). It is the released package (tls-legacy-arm.sis, recipes/sis.sh): package_only
+    # (never part of `build --all`: its image is also called ssl.dll, like ssl_ph's), with the CA bundle beside it. No
+    # PHOREPOC_SSL_FILELOG: that appends a line per connection (host names) to C:\data\ssl_trace.txt without bound, fine on
+    # a test phone and wrong in a release; add it to `defs` for a debugging build.
     "ssl_legacy": dict(mmp=os.path.join(OS_ROOT, "src/ssl/ssl_mbed.mmp"), rom="ssl.dll",
-                       cdriver=True, allow_wsd=True, device=True,
+                       cdriver=True, allow_wsd=True, device=True, package_only=True, arm_only=True,
                        **{"def": SSL_DEF},
                        flags=MBEDTLS_INC,
-                       defs=[MBEDTLS_CFG, "__SOFTFP=", "MBEDTLS_PLATFORM_MS_TIME_ALT",
-                             "PHOREPOC_SSL_TRACE", "PHOREPOC_SSL_FILELOG"],
+                       defs=[MBEDTLS_CFG, "__SOFTFP=", "MBEDTLS_PLATFORM_MS_TIME_ALT", "PHOREPOC_SSL_TRACE"],
+                       rom_data=[CA_BUNDLE],
                        extra=_mbedtls_sources()),
     # Open C's libssl.dll (OpenSSL 0.9.8g ABI) on ARM, mbedTLS compiled in
     "libssl_ph": dict(mmp=os.path.join(OS_ROOT, "src/libssl/libssl_mbed.mmp"), rom="libssl.dll",
@@ -97,7 +100,12 @@ EXTEND = {} if os.environ.get("SSL_2010") else {
                 **{"def": SSL_DEF},
                 flags=MBEDTLS_INC,
                 x32_archives=["thirdparty/x86/lib/libmbedtls.a"],
-                rom_data=[CA_BUNDLE, SSL_INI]),
+                rom_data=[CA_BUNDLE, SSL_INI],
+                # the ROM stub (the pdk's tools/rom_stubs.py -> z:\system\install\ssl_stub.sis) carrying the legacy package's
+                # UID (recipes/sis.sh): SWI then sees "Phorepoc TLS for older phones" as installed on every image of this layer,
+                # and a stray tls-legacy-arm.sis (no ROM-upgrade flag) can never eclipse the image's own ssl.dll.
+                # Catalogue hides the listing there (index: compatibility.builtin_on_phorepoc)
+                rom_stub=dict(uid=0xE7016F00, name="Phorepoc TLS", files=[r"sys\bin\ssl.dll"])),
 }
 
 

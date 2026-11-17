@@ -1,0 +1,22 @@
+Phorepoc TLS for older phones -- licence notice and source offer
+
+This package contains SSL.DLL, a drop-in for Symbian's secure-socket provider, with mbedTLS built into it, and the
+Mozilla CA bundle as data. The Phorepoc code in it is licensed under the GNU Affero General Public License version 3 only
+(AGPL-3.0-only) with the additional terms in ADDITIONAL-TERMS.md; mbedTLS is used under its Apache-2.0 option; the
+certificate bundle is MPL-2.0 data. The licence texts and NOTICE are installed with the package in
+\resource\phorepoc-tls\licences\ . The Phorepoc Build Output Exception lets you use the built SSL.DLL under any licence;
+NOTICE lists what it covers.
+
+Corresponding source, available to anyone who has this package, for at least three years after the release you installed
+it from:
+
+  1. Phorepoc's own code and the scripts that fetch, build and package it, at the release tag of this package:
+       https://github.com/Phorepoc/tls
+     built with the toolchain images and tools in https://github.com/Phorepoc/toolchain and https://github.com/Phorepoc/pdk,
+     against the Symbian platform source pinned in https://github.com/Phorepoc/core (sources.lock).
+  2. mbedTLS and the CA bundle, unmodified, at the versions and SHA-256 checksums pinned in mbedtls.lock and cacert.lock
+     of that repository (from https://github.com/Mbed-TLS/mbedtls and https://curl.se/docs/caextract.html).
+
+Written offer: if the links above are no longer available, send a request to the address given on the Phorepoc
+organisation page https://github.com/Phorepoc and we will send you the corresponding source on a medium of your choice
+for the cost of the medium.

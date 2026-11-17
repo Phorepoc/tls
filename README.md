@@ -28,6 +28,16 @@ TLS 1.3. S60 3rd and 5th Edition phones haven't been tested yet.
 It needs a phone with platform security hacked, because our `SSL.DLL` has to take the place of the one in ROM. It goes
 on `C:`, `E:` or `F:`, along with its hash in `C:\sys\hash\ssl.dll`.
 
+It comes as a package, `tls-legacy-arm.sis` (a GitHub release of this repository; [Catalogue](https://github.com/Phorepoc/catalogue)
+lists it for older phones). The installer of a stock phone refuses it, because a file of the ROM may only be replaced by
+a package signed for that and flagged as a ROM upgrade, so it needs the same patched installer (for example ROMPatcher's) and
+then writes the hash for you. It is ARM only, self-signed, with `mbedTLS` and the CA bundle inside; uninstall it to get the
+stock TLS back. Its package UID is `0xE7016F00`. `libssl.dll` (the Open C interface) is not in the package yet.
+
+On Phorepoc OS the package is not offered, and cannot take effect: images that include this repository carry a ROM stub
+(`z:\system\install\ssl_stub.sis`, the registry's `rom_stub`) with the same UID, so the installer treats the package as
+installed, and a package without the ROM-upgrade flag, which this one is, can't replace a ROM file.
+
 If you'd rather not hack your phone, have a look at
 [shinovon/symbian-tls](https://github.com/shinovon/symbian-tls). It's an independent project that replaces the system
 TLS on stock phones as a regular installable package, all the way back to Symbian OS 7.0.

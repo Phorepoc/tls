@@ -1,0 +1,80 @@
+# Copyright The Phorepoc Authors
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# release.yml -- the SSL.DLL drop-in for older Symbian phones as tls-legacy-arm.sis (ARM, mbedTLS), built by the pdk's
+# package.yml on every push to main. When the commits since the last release ask for one (Conventional Commits: feat =
+# minor, fix/perf = patch, breaking = major; the pdk's tools/ci/next_version.sh), they are released under that version;
+# Catalogue finds them through the index (listings/tls-legacy-arm).
+name: release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md"]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4
+        with:
+          fetch-depth: 0
+      - name: The pdk's release scripts
+        run: |
+          for f in next_version.sh commit_lint.sh; do
+            curl -fsSL -o "/tmp/$f" "https://raw.githubusercontent.com/${{ github.repository_owner }}/pdk/0a3b9c5b4dabb70aa3f8833e2eab95f20bb0c655/tools/ci/$f"
+          done
+      - name: Conventional Commit subjects
+        if: github.event_name == 'push'
+        run: sh /tmp/commit_lint.sh "${{ github.event.before }}" "${{ github.sha }}"
+      - name: Next version
+        id: v
+        run: |
+          v=$(sh /tmp/next_version.sh)
+          echo "next version: ${v:-none (nothing to release)}"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+  package:
+    needs: version
+    uses: Phorepoc/pdk/.github/workflows/package.yml@0a3b9c5b4dabb70aa3f8833e2eab95f20bb0c655
+    with:
+      version: ${{ needs.version.outputs.version }}
+    permissions:
+      contents: read
+      packages: read
+
+  publish:
+    needs: [version, package]
+    if: needs.version.outputs.version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093   # v4
+        with:
+          name: package-files
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          # an existing release is only topped up by a run of its own commit, never overwritten from another one
+          if gh release view "$VERSION" -R "${{ github.repository }}" >/dev/null 2>&1; then
+            at=$(gh api "repos/${{ github.repository }}/commits/$VERSION" -q .sha)
+            [ "$at" = "${{ github.sha }}" ] || { echo "::error::$VERSION is already released from $at, not ${{ github.sha }}: nothing uploaded"; exit 1; }
+          else
+            gh release create "$VERSION" -R "${{ github.repository }}" --target "${{ github.sha }}" --title "$VERSION" \
+              --notes-file notes.md
+          fi
+          gh release upload "$VERSION" out/* -R "${{ github.repository }}" --clobber
+      - name: Refresh the Catalogue index
+        uses: Phorepoc/pdk/.github/actions/index-refresh@main
+        with:
+          token: ${{ secrets.INDEX_DISPATCH_TOKEN }}
