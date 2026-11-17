@@ -1,0 +1,46 @@
+// Copyright The Phorepoc Authors
+// SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Phorepoc-Build-Output-Exception-1.0
+
+// ssl_openssl.mmp -- the OpenSSL-engine variant of ssl_mbed.mmp: the same SSL.DLL drop-in (name, UIDs, capabilities,
+// frozen exports of the 2010 sslU.def), with tlsconnection_openssl.cpp over OpenSSL 3.5 instead of
+// tlsconnection_mbed.cpp over mbedTLS. libssl.a + libcrypto.a are the PREBUILT archives recipes/build_openssl.sh
+// builds (x32; the ARM entries compile nothing of OpenSSL into the DLL, they link the ARM archives), linked through
+// the registry's `x32_archives` / `arm_archives`. It runs on Open C's libc (malloc/free, time for certificate
+// validity). Select it with ENGINE=openssl (registry/components_tls.py).
+#include <platform_paths.hrh>
+
+TARGET			ssl.dll
+TARGETTYPE		dll
+UID				0x1000183d 0x10001842
+CAPABILITY		ALL -Tcb
+VENDORID		0x70000001
+// above the ROM's 10.0 (see ssl_mbed.mmp)
+VERSION			11.0
+// OpenSSL keeps writable statics (error strings, the method tables' lazy state, the default library context)
+EPOCALLOWDLLDATA
+// tls_sesscache.cpp: no mbedTLS in this DLL
+MACRO			PHSC_NO_MBEDTLS
+
+OS_LAYER_SYSTEMINCLUDE_SYMBIAN
+OS_LAYER_LIBC_SYSTEMINCLUDE
+// the OpenSSL 3 include dir (thirdparty/<arch>/include/openssl3) comes from the registry entries' flags: it has to
+// precede stdapis/openssl, which is the 0.9.8 API
+USERINCLUDE		../openssl
+
+SOURCEPATH		.
+SOURCE			tlsconnection_openssl.cpp
+// portable parts shared with the mbedTLS engine, host-tested (os/src/tests/hosttls): the session cache container
+// (without its mbedTLS side) and the runtime switches (ssl.ini). Not tls_stubcert.cpp: it reads the certificate with
+// mbedTLS (the display copy for the platform's older X.509 parser is not ported to this engine yet).
+SOURCE			tls_sesscache.cpp
+SOURCE			tls_conf.cpp
+// OpenSSL's seed source (euser Math::Random)
+SOURCEPATH		../openssl
+SOURCE			seed_symbian.cpp
+
+LIBRARY			euser.lib efsrv.lib esock.lib x509.lib libc.lib
+// the certificate query (MSecurityDialog, as the 2010 TLS provider)
+LIBRARY			ctframework.lib
+
+UNPAGED
+SMPSAFE

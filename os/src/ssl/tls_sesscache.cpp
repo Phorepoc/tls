@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only WITH LicenseRef-Phorepoc-Build-Output-Exception-1.0
 
 // tls_sesscache.cpp -- see tls_sesscache.h.
+// PHSC_NO_MBEDTLS: the engine-neutral container only (the OpenSSL engine keeps i2d_SSL_SESSION blobs in it).
 #ifndef MBEDTLS_CONFIG_FILE
 #define MBEDTLS_CONFIG_FILE "phorepoc_mbedtls_config.h"
 #endif
@@ -271,6 +272,7 @@ int phsc_deserialize(phsc* c, const unsigned char* buf, size_t len, uint64_t now
 	}
 
 // ---- mbedTLS ------------------------------------------------------------------------------------------------------
+#ifndef PHSC_NO_MBEDTLS
 // A cache entry is: u32 length of the server's end-entity certificate (DER; 0 = none), the certificate, then the
 // mbedtls_ssl_session_save() image. The certificate is there because a TLS 1.3 session image does not carry it, and
 // the platform's UI (ServerCert, the page info) wants to show the server certificate of a resumed connection too.
@@ -353,3 +355,4 @@ int phtls_session_import(mbedtls_ssl_context* ssl, const unsigned char* blob, si
 		}
 	return rc;
 	}
+#endif // PHSC_NO_MBEDTLS

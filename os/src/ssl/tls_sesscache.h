@@ -11,7 +11,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifndef PHSC_NO_MBEDTLS
 #include "mbedtls/ssl.h"
+#endif
 
 #define PHSC_MAX_ENTRIES 16			// bound on cached sessions
 #define PHSC_MAX_AGE 86400u			// seconds: no session outlives a day, whatever its ticket lifetime hint says
@@ -54,6 +56,7 @@ size_t phsc_serialize(const phsc* c, uint64_t now, unsigned char* buf, size_t ca
 int phsc_deserialize(phsc* c, const unsigned char* buf, size_t len, uint64_t now);
 
 // ---- the mbedTLS side -----------------------------------------------------------------------------------------
+#ifndef PHSC_NO_MBEDTLS
 // Export the connection's session for the cache. 0 = *blob (malloc) / *len / *flags / *lifetime are set; non-zero =
 // not cacheable: the certificate did not verify cleanly (a user-accepted certificate is never resumed silently), no
 // ticket or session id, too big, or already exported.
@@ -63,5 +66,7 @@ int phtls_session_export(const mbedtls_ssl_context* ssl, unsigned char** blob, s
 // *cert / *certLen: the server certificate (DER, malloc: caller frees) the session was established with, if kept.
 int phtls_session_import(mbedtls_ssl_context* ssl, const unsigned char* blob, size_t len, unsigned char** cert,
 						 size_t* certLen);
+
+#endif // PHSC_NO_MBEDTLS
 
 #endif
