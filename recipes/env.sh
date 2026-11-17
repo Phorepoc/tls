@@ -10,6 +10,7 @@ TLS=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 : "${PHOREPOC_PDK:=$TLS/../pdk}"
 TLS_BUILD=$PHOREPOC_BUILD/tls
 MBEDTLS_SRC=$TLS_BUILD/mbedtls-src
+OPENSSL_SRC=$TLS_BUILD/openssl-src
 
 # fetch_verified URL SHA256 OUTFILE -- download unless OUTFILE already has that hash; fail on a mismatch
 fetch_verified() {
