@@ -5,7 +5,11 @@ Phorepoc was founded by Kyriakos Bompotis.
 
 Phorepoc code licensed under the GNU Affero General Public License, version 3 only (AGPL-3.0-only, LICENSE), with the additional terms in ADDITIONAL-TERMS.md (section 7(b) attributions, section 7(e) names and logos), and the Phorepoc Build Output Exception (LICENSES/Phorepoc-Build-Output-Exception-1.0.txt) as described below.
 
-Not part of this repository, fetched at build time (recipes/fetch_mbedtls.sh, recipes/fetch_cacert.sh):
+Not part of this repository, fetched at build time (recipes/fetch_openssl.sh, recipes/fetch_mbedtls.sh, recipes/fetch_cacert.sh):
+
+- OpenSSL 3.5 (https://github.com/openssl/openssl), copyright The OpenSSL Project Authors; Apache-2.0
+  (LICENSES/Apache-2.0.txt, LICENSES/OpenSSL-NOTICE.txt). The release is pinned by SHA-256 in openssl.lock. It is the
+  TLS engine of the board builds (ENGINE, README.md "Engines"); the drop-in for older phones does not contain it.
 
 - mbedTLS 3.6 (https://github.com/Mbed-TLS/mbedtls), copyright The Mbed TLS Contributors. Dual-licensed
   Apache-2.0 OR GPL-2.0-or-later; Phorepoc uses it under the Apache-2.0 option. The release is pinned by SHA-256 in
@@ -17,7 +21,7 @@ Not part of this repository, fetched at build time (recipes/fetch_mbedtls.sh, re
 Interface headers of Symbian OS and of Open C (the OpenSSL 0.9.8g API that libssl.dll presents) are compiled
 against but not copied here; their authors' licences apply to them.
 
-Thanks to the mbedTLS project for the engine, to the curl project for keeping the CA bundle current, and to the
+Thanks to the OpenSSL and mbedTLS projects for the engines, to the curl project for keeping the CA bundle current, and to the
 Symbian Foundation for releasing the platform.
 
 Licensing. The Phorepoc code is AGPL-3.0-only with additional terms under its section 7 (ADDITIONAL-TERMS.md):

@@ -1,0 +1,14 @@
+OpenSSL 3.5 (https://github.com/openssl/openssl), used by the OpenSSL engine of SSL.DLL
+
+Copyright (c) 1998-2026 The OpenSSL Project Authors
+Copyright (c) 1995-1998 Eric A. Young, Tim J. Hudson
+
+OpenSSL 3 is licensed under the Apache License, Version 2.0 (LICENSES/Apache-2.0.txt, the text of the LICENSE.txt in
+the OpenSSL source distribution), and is combined with Phorepoc's AGPL-3.0-only code under the compatibility between
+the two (Apache-2.0 code may be included in a GPLv3 / AGPLv3 work).
+
+OpenSSL's source distribution carries no NOTICE file (Apache-2.0 section 4(d)); this file is the attribution that
+travels with a binary: it names the project and its authors and points to the licence text above. The source of the
+exact release is pinned in openssl.lock (recipes/fetch_openssl.sh downloads it and checks its SHA-256); nothing of it is
+modified: the build passes Configure options only (recipes/openssl_options.sh), and the engine registers a seed source
+through OpenSSL's public provider interface (os/src/openssl/seed_symbian.cpp).
