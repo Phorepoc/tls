@@ -26,6 +26,22 @@ SSL_DEF = "oss.FCL.sf.os.networkingsrv/networksecurity/tls/eabi/sslU.def"
 LIBSSL_DEF = "oss.FCL.sf.os.ossrv/ssl/libssl/eabi/libsslu.def"
 
 
+# The TLS engine behind SSL.DLL on the boards: OpenSSL 3.5 by default, ENGINE=mbedtls for mbedTLS (recipes/fetch_openssl.sh +
+# build_openssl.sh [--arm]; static libssl.a + libcrypto.a, no mbedTLS in the DLL); see "the engine switch" at the end.
+# The OpenSSL 3 headers precede Open C's own <openssl/...> (the 0.9.8 API) through `incs_first`.
+ENGINE = os.environ.get("ENGINE", "openssl").lower()
+OPENSSL_INC = os.path.join(BUILD, "thirdparty/{arch}/include/openssl3")
+OPENSSL_MMP = os.path.join(OS_ROOT, "src/ssl/ssl_openssl.mmp")
+
+
+def _openssl(arch):
+    """The overrides that turn an SSL.DLL entry into its OpenSSL-engine build (arch: x86 = x32, arm)."""
+    lib = f"thirdparty/{arch}/lib/"
+    return dict(mmp=OPENSSL_MMP, incs_first=[OPENSSL_INC.format(arch=arch)], arm_incs_first=True, flags=[],
+                extra=[], **({"arm_archives": [lib + "libssl.a", lib + "libcrypto.a"]} if arch == "arm" else
+                             {"x32_archives": [lib + "libssl.a", lib + "libcrypto.a"]}))
+
+
 def _mbedtls_sources():
     """The library sources the ARM builds compile into the DLL (empty until fetch_mbedtls.sh has run)."""
     return sorted(".tls/mbedtls-src/library/" + os.path.basename(p) for p in glob.glob(os.path.join(MBEDTLS_SRC, "library/*.c")))
@@ -83,3 +99,24 @@ EXTEND = {} if os.environ.get("SSL_2010") else {
                 x32_archives=["thirdparty/x86/lib/libmbedtls.a"],
                 rom_data=[CA_BUNDLE, SSL_INI]),
 }
+
+
+# ---- the engine switch ----------------------------------------------------------------------------------------------
+# ENGINE selects the TLS engine behind SSL.DLL in the BOARD builds (the `ssl` x32 entry, `ssl_ph` on ARM):
+#   openssl (the default)  OpenSSL 3.5: static libssl.a + libcrypto.a, recipes/build_openssl.sh [--arm]
+#   mbedtls                mbedTLS 3.6, as before
+# `ssl_legacy` -- the SIS drop-in for Symbian OS 9.x phones -- is mbedTLS whatever ENGINE says: it is small (~265 KB
+# against ~2.1 MB), and it is what the phones were tested with. The libssl.dll front ends (libssl_ph, libssl_mbed: the
+# OpenSSL 0.9.8 ABI) stay on mbedTLS too; their exports are the same either way (the .def files are not touched).
+# The ARM entries link the ARM archives, core's `ssl` the x32 ones (the OpenSSL 3 headers precede Open C's own
+# <openssl/...>, the 0.9.8 API, through incs_first).
+if ENGINE == "openssl":
+    _a = _openssl("arm")
+    COMPONENTS["ssl_ph"].update(mmp=_a["mmp"], incs_first=_a["incs_first"], arm_incs_first=True, flags=[], extra=[],
+                                arm_archives=_a["arm_archives"],
+                                defs=["__SOFTFP="])
+    if "ssl" in EXTEND:
+        _x = _openssl("x86")
+        EXTEND["ssl"].update(x32_mmp=_x["mmp"], incs_first=_x["incs_first"], flags=[], x32_archives=_x["x32_archives"])
+elif ENGINE != "mbedtls":
+    raise SystemExit("ENGINE must be openssl (default) or mbedtls, not " + ENGINE)
