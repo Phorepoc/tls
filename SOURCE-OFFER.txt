@@ -18,5 +18,5 @@ it from:
      of that repository (from https://github.com/Mbed-TLS/mbedtls and https://curl.se/docs/caextract.html).
 
 Written offer: if the links above are no longer available, send a request to the address given on the Phorepoc
-organisation page https://github.com/Phorepoc and we will send you the corresponding source on a medium of your choice
+organisation page https://github.com/Phorepoc and Phorepoc will send you the corresponding source on a medium of your choice
 for the cost of the medium.

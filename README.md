@@ -16,16 +16,16 @@ It replaces two libraries:
 - **`libssl.dll`** offers Open C's OpenSSL 0.9.8 interface, which Qt, Java, Internet Radio and other Open C programs
   use, with modern TLS behind it (mbedTLS, whichever engine `SSL.DLL` has).
 
-We don't keep copies of OpenSSL, mbedTLS or the certificate bundle here. The recipes download the exact versions in
+This repository does not keep copies of OpenSSL, mbedTLS or the certificate bundle. The recipes download the exact versions in
 `openssl.lock`, `mbedtls.lock` and `cacert.lock` and check their SHA-256.
 
 ## On older Symbian phones
 
-On a phone running Symbian OS 9.x (S60 3rd and 5th Edition, Symbian^3, Anna and Belle), you can drop our `SSL.DLL` in
-to replace the system one. We've tested it on a Belle phone, where the stock browser loads https pages over
+On a phone running Symbian OS 9.x (S60 3rd and 5th Edition, Symbian^3, Anna and Belle), the Phorepoc `SSL.DLL` can be dropped in
+to replace the system one. It has been tested on a Belle phone, where the stock browser loads https pages over
 TLS 1.3. S60 3rd and 5th Edition phones haven't been tested yet.
 
-It needs a phone with platform security hacked, because our `SSL.DLL` has to take the place of the one in ROM. It goes
+It needs a phone with platform security hacked, because the Phorepoc `SSL.DLL` has to take the place of the one in ROM. It goes
 on `C:`, `E:` or `F:`, along with its hash in `C:\sys\hash\ssl.dll`.
 
 It comes as a package, `tls-legacy-arm.sis` (a GitHub release of this repository; [Catalogue](https://github.com/Phorepoc/catalogue)
@@ -79,7 +79,7 @@ session_persist = 0    # keep sessions in memory only, not in a file (default 1)
 ```
 
 **It supports ALPN for apps that ask.** The system's secure socket interface has no way to choose a protocol such as
-HTTP/2, so we added one. Call `SetOpt(0x50480002, KSolInetSSL, "h2,http/1.1")` before the handshake and
+HTTP/2, so Phorepoc added one. Call `SetOpt(0x50480002, KSolInetSSL, "h2,http/1.1")` before the handshake and
 `GetOpt(0x50480002, KSolInetSSL, des)` afterwards to see which was picked. `GetOpt(0x50480001, KSolInetSSL, int)`
 tells you whether the connection resumed a session.
 
@@ -107,7 +107,7 @@ configuration to a real server to grade its ClientHello.
   cache, the stand-in certificate and the settings parser are split out so
   they can be tested on a computer.
 - `os/src/libssl/` is `libssl.dll`.
-- `os/src/mbedtls/` has our mbedTLS configuration and its source of randomness on Phorepoc OS.
+- `os/src/mbedtls/` has the Phorepoc mbedTLS configuration and its source of randomness on Phorepoc OS.
 - `os/src/tests/` has the tests above, plus `ssltest` for the OpenSSL interface and `sslprobe`, which shows which
   `SSL.DLL` a phone actually loads.
 - `os/src/openssl/` has the OpenSSL engine's source of randomness.
